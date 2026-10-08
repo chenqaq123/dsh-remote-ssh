@@ -58,9 +58,11 @@ node scripts/profile.mjs install desktop
 仓库包含完整 npm 包元数据和命令入口，可直接从 GitHub tag 安装，无需等待 npm registry 发布：
 
 ```sh
-npm install -g git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.1
+npm install -g --install-links git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.1
 dsh-ssh-remote install desktop
 ```
+
+`--install-links` 确保安装完整文件，避免部分 npm 版本将插件链接到随后被清理的 Git 临时缓存。使用全局包方式更新时也请保留此参数。
 
 本仓库不声称已在 npm registry 上架。维护者可运行 `npm pack` 生成安装包，或使用有发布权限的 npm 账户执行 `npm publish`。
 
