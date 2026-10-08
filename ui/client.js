@@ -138,8 +138,13 @@ window.__ModuleLoader__.load({
     }
     function RemotePanel({ api, openWorkspace }) {
       const [snapshot, setSnapshot] = useState({ hosts: [], mounts: [], warnings: [] });
-      const [host, setHost] = useState('');
-      const [path, setPath] = useState('');
+      const [selection, setSelection] = useState({ host: '', path: '' });
+      const { host, path } = selection;
+      const setPath = (path) => setSelection((current) => ({ ...current, path }));
+      const setHost = (next) => setSelection((current) => {
+        const host = typeof next === 'function' ? next(current.host) : next;
+        return { host, path: host === current.host ? current.path : '' };
+      });
       const [picker, setPicker] = useState(false);
       const [loading, setLoading] = useState(true);
       const [busy, setBusy] = useState('');
@@ -161,7 +166,6 @@ window.__ModuleLoader__.load({
           .finally(() => { if (!controller.signal.aborted) setLoading(false); });
         return () => controller.abort();
       }, []);
-      useEffect(() => { setPath(''); }, [host]);
       async function run(key, operation) {
         if (lock.current) return;
         lock.current = true;

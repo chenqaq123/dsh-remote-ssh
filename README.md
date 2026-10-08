@@ -45,7 +45,7 @@ ssh dev-server
 ```sh
 git clone https://github.com/chenqaq123/dsh-remote-ssh.git
 cd dsh-remote-ssh
-git checkout v0.3.0
+git checkout v0.3.1
 node scripts/profile.mjs install desktop
 ```
 
@@ -58,7 +58,7 @@ node scripts/profile.mjs install desktop
 仓库包含完整 npm 包元数据和命令入口，可直接从 GitHub tag 安装，无需等待 npm registry 发布：
 
 ```sh
-npm install -g git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.0
+npm install -g git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.1
 dsh-ssh-remote install desktop
 ```
 

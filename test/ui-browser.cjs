@@ -23,7 +23,7 @@ async function main(){
   await button('打开文件夹 sample-project',dialog).click();await button('打开文件夹 src',dialog).waitFor();
   await button('选择此目录',dialog).click();await button('更改目录 /home/demo/projects/sample-project').waitFor();
   if(process.env.UPDATE_SCREENSHOTS)await page.screenshot({path:path.join(root,'docs/remote-workspace.png')});
-  await page.getByRole('combobox').selectOption('staging');assert.equal(await button('连接并打开').isDisabled(),true);
+  await page.getByRole('combobox').selectOption('staging');await button('选择远程目录').waitFor();assert.equal(await button('连接并打开').isDisabled(),true);
   await button('选择远程目录').click();await button('打开文件夹 projects',dialog).waitFor();
   await dialog.getByRole('checkbox',{name:'显示隐藏文件夹'}).check();await button('打开文件夹 .config',dialog).waitFor();
   await button('上一级',dialog).click();await button('打开文件夹 demo',dialog).waitFor();
