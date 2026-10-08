@@ -1,0 +1,56 @@
+const {chromium}=require('playwright');
+const {createServer}=require('node:http');
+const {readFileSync,mkdirSync}=require('node:fs');
+const path=require('node:path');
+const assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..');
+const server=createServer((req,res)=>{const file=path.resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end()};try{res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.html')?'text/html':'text/plain');res.end(readFileSync(file));}catch{res.writeHead(404);res.end();}});
+async function main(){
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
+ try{
+  const page=await browser.newPage({viewport:{width:1280,height:880},deviceScaleFactor:1.5});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(`http://127.0.0.1:${server.address().port}/test/preview/index.html`);
+  await page.getByRole('heading',{name:'远程工作区',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.sidebarEntry.spec.label),'远程工作区');
+  const dialog=page.getByRole('dialog');const button=(name,scope=page)=>scope.getByRole('button',{name,exact:true});
+  await button('选择远程目录').click();
+  await button('打开文件夹 projects',dialog).click();await button('打开文件夹 sample-project',dialog).waitFor();
+  await dialog.getByRole('textbox',{name:'筛选当前目录'}).fill('sample');
+  assert.equal(await dialog.getByRole('button',{name:/^打开文件夹/}).count(),1);
+  await dialog.getByRole('textbox',{name:'筛选当前目录'}).fill('');
+  if(process.env.UPDATE_SCREENSHOTS){mkdirSync(path.join(root,'docs'),{recursive:true});await page.screenshot({path:path.join(root,'docs/directory-picker.png')});}
+  await button('打开文件夹 sample-project',dialog).click();await button('打开文件夹 src',dialog).waitFor();
+  await button('选择此目录',dialog).click();await button('更改目录 /home/demo/projects/sample-project').waitFor();
+  if(process.env.UPDATE_SCREENSHOTS)await page.screenshot({path:path.join(root,'docs/remote-workspace.png')});
+  await page.getByRole('combobox').selectOption('staging');assert.equal(await button('连接并打开').isDisabled(),true);
+  await button('选择远程目录').click();await button('打开文件夹 projects',dialog).waitFor();
+  await dialog.getByRole('checkbox',{name:'显示隐藏文件夹'}).check();await button('打开文件夹 .config',dialog).waitFor();
+  await button('上一级',dialog).click();await button('打开文件夹 demo',dialog).waitFor();
+  await button('/',dialog).click();await button('打开文件夹 home',dialog).waitFor();assert.equal(await button('上一级',dialog).isDisabled(),true);
+  await dialog.getByText('前往指定路径',{exact:true}).click();await dialog.getByRole('textbox',{name:'远程绝对路径'}).fill('/missing');
+  await button('前往',dialog).click();await dialog.getByRole('alert').waitFor();assert.equal(await button('选择此目录',dialog).isDisabled(),true);
+  await button('主目录',dialog).click();await button('打开文件夹 projects',dialog).waitFor();
+  await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});
+  await page.evaluate(()=>window.slowBrowse=true);await button('选择远程目录').click();await dialog.getByText('正在读取远程目录…',{exact:true}).waitFor();
+  await page.keyboard.press('Escape');await page.evaluate(()=>{window.slowBrowse=false;window.failBrowse=true});
+  await button('选择远程目录').click();await dialog.getByRole('alert').filter({hasText:'SSH 认证失败'}).waitFor();
+  await page.evaluate(()=>window.failBrowse=false);await button('主目录',dialog).click();await button('打开文件夹 Documents',dialog).click();
+  await dialog.getByText('这个目录没有子文件夹，可以直接选择当前目录。',{exact:true}).waitFor();await button('选择此目录',dialog).click();
+  await page.evaluate(()=>window.failConnect=true);await button('连接并打开').click();await page.getByRole('alert').filter({hasText:'SSH 认证失败'}).waitFor();
+  assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='open-workspace')),false);
+  await page.evaluate(()=>{window.failConnect=false;window.delayConnect=true});await button('连接并打开').click();assert.equal(await button('连接并打开中…').isDisabled(),true);
+  await page.waitForFunction(()=>window.calls.some(c=>c.method==='open-workspace'));
+  assert.deepEqual(await page.evaluate(()=>window.calls.find(c=>c.method==='create-workspace').request),{path:'/demo/workspaces/connected'});
+  await button('检查连接').click();await button('断开').click();await button('取消').click();assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='disconnect')),false);
+  await button('断开').click();await button('确认断开').click();await page.getByText('还没有远程工作区',{exact:true}).waitFor();
+  await page.setViewportSize({width:420,height:900});await page.getByRole('button',{name:/^更改目录/}).click();await dialog.getByText('这个目录没有子文件夹，可以直接选择当前目录。',{exact:true}).waitFor();
+  assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth),true);await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>!!document.activeElement.closest('dialog')),true);
+  mkdirSync(path.join(root,'test/artifacts'),{recursive:true});await page.screenshot({path:path.join(root,'test/artifacts/narrow-dark.png')});
+  await page.keyboard.press('Escape');await page.evaluate(()=>document.documentElement.classList.remove('dark'));await page.screenshot({path:path.join(root,'test/artifacts/narrow-light.png')});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.evaluate(()=>window.noHosts=true);await button('刷新服务器和工作区').click();await page.getByText('请先在 ~/.ssh/config 添加服务器，再点击刷新。',{exact:true}).waitFor();
+  assert.deepEqual(errors,[]);console.log('Browser checks passed: navigation, filter, hidden/root/empty folders, cancellation/retry, auth errors, host changes, connect/open/check/disconnect, keyboard and responsive layouts.');
+ }finally{await browser.close();}
+}
+main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>server.close());

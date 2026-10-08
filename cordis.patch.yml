@@ -1,0 +1,16 @@
+# Route remote workspaces over SSH; keep local workspaces on the local sandbox.
+- id: fs-sandbox
+  disabled: true
+- id: bash-sandbox
+  disabled: true
+- id: pwsh-sandbox
+  disabled: true
+- insert:
+    - id: ssh-remote
+      name: 'dsh-ssh-remote'
+      config:
+        hosts: []
+        mounts: []
+        localFallback: true
+        confineMutations: true
+        extraWritableRoots: []

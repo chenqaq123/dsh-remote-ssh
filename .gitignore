@@ -1,0 +1,10 @@
+node_modules/
+*.tgz
+.DS_Store
+.backups/
+*.bak*
+.cordis.patch.yml.backup
+test/artifacts/
+test/preview/harness-*.js
+test/preview/vendor-*.js
+test/preview/*.png
