@@ -136,7 +136,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'dsh-ssh-primary', disabled: loading || !data || !!error,
             onClick: () => onSelect(data.path) }, '选择此目录')));
     }
-    function RemotePanel({ api, openWorkspace }) {
+    function RemotePanel({ api, openWorkspace, subscribeWorkspaces }) {
       const [snapshot, setSnapshot] = useState({ hosts: [], mounts: [], warnings: [] });
       const [selection, setSelection] = useState({ host: '', path: '' });
       const { host, path } = selection;
@@ -153,9 +153,11 @@ window.__ModuleLoader__.load({
       const [confirm, setConfirm] = useState(null);
       const lifetime = useRef(null);
       const lock = useRef(false);
+      const refreshId = useRef(0);
       const refresh = async (signal) => {
+        const id = ++refreshId.current;
         const next = await api('list', undefined, signal);
-        if (signal?.aborted) return;
+        if (signal?.aborted || id !== refreshId.current) return;
         setSnapshot(next);
         setHost((current) => next.hosts.some((entry) => entry.alias === current) ? current : next.hosts[0]?.alias ?? '');
       };
@@ -164,7 +166,8 @@ window.__ModuleLoader__.load({
         lifetime.current = controller;
         refresh(controller.signal).catch((e) => { if (!controller.signal.aborted) setError(friendly(e)); })
           .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-        return () => controller.abort();
+        const unsubscribe = subscribeWorkspaces?.(() => { refresh(controller.signal).catch(() => {}); });
+        return () => { unsubscribe?.(); controller.abort(); };
       }, []);
       async function run(key, operation) {
         if (lock.current) return;
@@ -241,16 +244,20 @@ window.__ModuleLoader__.load({
               h('button', { disabled, onClick: () => run(`check:${mount.localDir}`, async (signal) => {
                 await api('check', { local_path: mount.localDir }, signal); await refresh(signal);
               }) }, busy === `check:${mount.localDir}` ? '检查中…' : '检查连接'),
-              h('button', { disabled, onClick: () => setConfirm(mount.localDir) }, '断开')),
+              h('button', { disabled, onClick: () => setConfirm({ path: mount.localDir, action: 'disconnect' }) }, '断开'),
+              h('button', { disabled, className: 'dsh-ssh-danger', onClick: () => setConfirm({ path: mount.localDir, action: 'remove' }) }, '移除工作区')),
             mount.checkedAt && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 10 } }, `上次检查：${new Date(mount.checkedAt).toLocaleString()}`),
             h('details', { className: 'dsh-ssh-details' }, h('summary', null, '工作区详情'), h('p', null, mount.localDir)),
-            confirm === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
-              h('p', { className: 'dsh-ssh-muted' }, '断开会移除这个远程工作区的连接。请先结束其中正在进行的任务；服务器上的文件会保留。'),
+            confirm?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
+              h('p', { className: 'dsh-ssh-muted' }, confirm.action === 'remove'
+                ? '将移除工作区并归档其中的会话，历史记录和远程文件会保留。已进入“未分组”的相关会话也会归档。请先结束正在运行的任务。'
+                : '断开会移除这个远程工作区的连接。请先结束其中正在进行的任务；服务器上的文件会保留。'),
               h('div', { className: 'dsh-ssh-actions' }, h('button', { className: 'dsh-ssh-danger', disabled,
-                onClick: () => run(`disconnect:${mount.localDir}`, async (signal) => {
-                  await api('disconnect', { local_path: mount.localDir }, signal); setConfirm(null);
-                  await refresh(signal); setNotice('已断开连接，远程文件已保留。');
-                }) }, busy === `disconnect:${mount.localDir}` ? '断开中…' : '确认断开'),
+                onClick: () => run(`${confirm.action}:${mount.localDir}`, async (signal) => {
+                  const action = confirm.action;
+                  await api(action, { local_path: mount.localDir }, signal); setConfirm(null);
+                  await refresh(signal); setNotice(action === 'remove' ? '工作区已移除，会话已归档，远程文件已保留。' : '已断开连接，远程文件已保留。');
+                }) }, busy === `${confirm.action}:${mount.localDir}` ? '处理中…' : confirm.action === 'remove' ? '确认移除并归档' : '确认断开'),
                 h('button', { disabled, onClick: () => setConfirm(null) }, '取消'))))),
           h('p', { className: 'dsh-ssh-muted', style: { marginTop: 20 } }, '从这里打开的会话会使用远程目录。本地工作区仍可照常使用。')));
     }
@@ -270,7 +277,7 @@ window.__ModuleLoader__.load({
           await ctx.uiWorkspace.openWorkspace(workspace.workspaceId);
         };
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL,
-          inject: () => ({ api, openWorkspace }) }, RemotePanel));
+          inject: () => ({ api, openWorkspace, subscribeWorkspaces: (listener) => ctx.workspaces.list.subscribe(listener) }) }, RemotePanel));
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist',
           id: PANEL, order: -10, label: '远程工作区' }, Icon));
       },

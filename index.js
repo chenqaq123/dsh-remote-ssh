@@ -25,6 +25,7 @@ import { createSshShellExecutor } from './lib/shell-remote.js';
 import { dshHome, registerTools } from './lib/tools.js';
 import { createWorkspaceActions } from './lib/workspace-actions.js';
 import { registerSshUi } from './ui/host.js';
+import { installWorkspaceRemoval } from './lib/workspace-removal.js';
 
 /** Load the harness seam classes once, before the plugin is instantiated. */
 const host = await loadHostModules();
@@ -176,8 +177,8 @@ export function apply(ctx, rawConfig) {
     }
   }
 
-  // Deployment-declared mounts are applied every boot; runtime mounts persist
-  // separately so a tool-driven mount survives a reload.
+  // Deployment-declared mounts are applied at boot unless explicitly retired;
+  // runtime mounts persist separately so a tool-driven mount survives a reload.
   for (const entry of config.mounts) {
     const alias = String(entry.host ?? entry.alias ?? '');
     const remoteDir = String(entry.remoteDir ?? entry.remote_dir ?? '');
@@ -186,10 +187,13 @@ export function apply(ctx, rawConfig) {
       continue;
     }
     const localDir = entry.localDir ?? entry.local_dir;
+    const mountRoot = localDir === undefined
+      ? join(config.mirrorRoot, alias.replace(/[^\w.-]+/gu, '_'), remoteDir.replace(/^\/+/u, '').replace(/[^\w.-]+/gu, '_'))
+      : expandHome(String(localDir));
+    // A user-removed configured mount must stay removed across restarts.
+    if (mounts.retiredRoots.has(mountRoot)) continue;
     mounts.put({
-      localDir: localDir === undefined
-        ? join(config.mirrorRoot, alias.replace(/[^\w.-]+/gu, '_'), remoteDir.replace(/^\/+/u, '').replace(/[^\w.-]+/gu, '_'))
-        : expandHome(String(localDir)),
+      localDir: mountRoot,
       alias,
       remoteDir,
     });
@@ -210,6 +214,9 @@ export function apply(ctx, rawConfig) {
   new SshFileSystem(ctx, config);
   new SshShellExecutor(ctx, config);
   runtime.workspaceActions = createWorkspaceActions(runtime);
+  ctx.inject(['workspaceRegistry', 'sessionPersistence'], (scope) => {
+    scope.effect(() => installWorkspaceRemoval(scope, runtime));
+  });
   registerTools(ctx, host, runtime);
   new SshRemoteService(ctx, runtime);
   ctx.inject(['typert', 'sshRemote'], (scope) => registerSshUi(scope, host, runtime));

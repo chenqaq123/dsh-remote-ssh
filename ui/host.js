@@ -20,6 +20,10 @@ export async function registerSshUi(ctx, host, runtime) {
     connect(request, signal) { return runtime.workspaceActions.connect(request, signal); }
     check(request, signal) { return runtime.workspaceActions.check(request.local_path, signal); }
     disconnect(request) { return runtime.workspaceActions.disconnect(request.local_path); }
+    remove(request) {
+      if (!runtime.removeWorkspace) throw new Error('工作区服务尚未就绪，请稍后重试。');
+      return runtime.removeWorkspace(request.local_path);
+    }
   }
   new SshRemoteUi(ctx);
   const mount = z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(),
@@ -36,6 +40,7 @@ export async function registerSshUi(ctx, host, runtime) {
       cancel: true, result: z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(), banner: z.string() }) },
     check: { request: pathRequest, cancel: true, result: mount },
     disconnect: { request: pathRequest, result: z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(), closed: z.boolean() }) },
+    remove: { request: pathRequest, result: z.object({ removed: z.literal(true), localDir: z.string(), archivedSessionIds: z.array(z.string()) }) },
   };
   const codec = (method, kind, schema) => ({ mode: 'strict',
     typeSymbol: `dsh-ssh-remote-ui#${method}:${kind}`, create: () => schema });

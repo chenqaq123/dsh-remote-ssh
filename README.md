@@ -38,7 +38,7 @@ ssh dev-server
 ```sh
 git clone https://github.com/chenqaq123/dsh-remote-ssh.git
 cd dsh-remote-ssh
-git checkout v0.3.1
+git checkout v0.3.2
 node scripts/profile.mjs install desktop
 ```
 
@@ -51,7 +51,7 @@ node scripts/profile.mjs install desktop
 仓库包含完整 npm 包元数据和命令入口，可直接从 GitHub tag 安装，无需等待 npm registry 发布：
 
 ```sh
-npm install -g --install-links git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.1
+npm install -g --install-links git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.2
 dsh-ssh-remote install desktop
 ```
 
@@ -66,6 +66,12 @@ node scripts/profile.mjs uninstall desktop
 ```
 
 全局包安装可运行 `dsh-ssh-remote uninstall desktop`，然后再卸载 npm 包。卸载只移除配置区块与插件链接，不删除远程文件或已保存的挂载数据。
+
+## 移除远程工作区
+
+「移除工作区」会归档相关会话并移除分组和远程映射，保留历史记录及服务器文件；侧边栏删除远程工作区也按此处理。有任务运行时，请先结束任务。
+
+旧版本删除后留在「未分组」的会话，可在远程面板找到对应项目并点击「移除工作区」一并归档。「断开」只断开连接，保留分组和会话。
 
 ## 许可证
 

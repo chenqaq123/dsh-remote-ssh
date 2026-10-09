@@ -50,9 +50,14 @@ try {
       })),
     };
     for (const [name, provide] of Object.entries(providers)) if (name !== delayed) provide();
+    const retiredRoot = join(scratch, `${delayed}-retired`);
+    writeFileSync(join(scratch, `${delayed}-mounts.json`), JSON.stringify({
+      version: 2, mounts: [], retiredRoots: [retiredRoot],
+    }));
     const fiber = await ctx.plugin(plugin, {
       sshConfigPaths: [], storageFile: join(scratch, `${delayed}-mounts.json`),
       mirrorRoot: join(scratch, `${delayed}-mirrors`), localFallback: true,
+      mounts: [{ host: 'example.invalid', remoteDir: '/retired', localDir: retiredRoot }],
     });
     fibers.push(fiber);
     await test(`waits while ${delayed} is unavailable`, () => {
@@ -69,6 +74,11 @@ try {
     });
     if (delayed === 'sandboxPolicy') ready = ctx;
   }
+
+  await test('explicitly removed configured mounts stay removed after startup', () => {
+    assert.equal(ready.sshRemote.mounts.list().length, 0);
+    assert.throws(() => ready.sshRemote.mounts.assertActivePath(join(scratch, 'sandboxPolicy-retired')), /已断开/);
+  });
 
   await test('writes and edits local files without an SSH mount', async () => {
     const target = await ready.fs.resolve('written.txt', { cwd: localWorkspace });

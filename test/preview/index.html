@@ -6,6 +6,7 @@
 // Fictional fixtures only: this preview never reads SSH configuration or connects.
 const plugin=window.sshBundle.factory(name=>({react:React})[name]);
 window.calls=[];window.failConnect=false;window.delayConnect=false;window.noHosts=false;
+window.workspaceListeners=new Set();window.archivedSessionIds=[];
 window.mounts=[{alias:'dev-server',remoteDir:'/home/demo/projects/sample-project',localDir:'/demo/workspaces/sample-project',status:'saved',checkedAt:null,message:''}];
 window.hosts=[{alias:'dev-server',hostname:'dev.example.com'},{alias:'staging',hostname:'staging.example.com'}];
 const folders={'/':['home','srv'],'/home':['demo'],'/home/demo':['.config','Documents','projects'],'/home/demo/projects':['api-service','sample-project','website'],'/home/demo/projects/sample-project':['docs','src','tests']};
@@ -28,8 +29,13 @@ const ctx={
   }
   if(method==='check'){window.mounts[0].status='connected';window.mounts[0].checkedAt=new Date().toISOString();return {ok:true,value:window.mounts[0]};}
   if(method==='disconnect'){window.mounts=[];return {ok:true,value:{closed:true}};}
+  if(method==='remove'){
+   if(window.failRemove)return {ok:false,error:{message:'工作区中仍有任务在运行，请先结束任务，再移除工作区。'}};
+   window.mounts=[];window.archivedSessionIds=['demo-chat'];window.workspaceListeners.forEach(listener=>listener());
+   return {ok:true,value:{removed:true,localDir:request.local_path,archivedSessionIds:window.archivedSessionIds}};
+  }
  }}},
- workspaces:{async create(input){window.calls.push({method:'create-workspace',request:input});return {workspaceId:'demo-workspace'}}},
+ workspaces:{list:{subscribe(listener){window.workspaceListeners.add(listener);return ()=>window.workspaceListeners.delete(listener)}},async create(input){window.calls.push({method:'create-workspace',request:input});return {workspaceId:'demo-workspace'}}},
  uiWorkspace:{async openWorkspace(id){window.calls.push({method:'open-workspace',id})}},
  slots:{inject(name,fn){return fn()},register(spec,Component){if(spec.name==='main')window.panel={spec,Component};else window.sidebarEntry={spec,Component};return ()=>{}}},
 };

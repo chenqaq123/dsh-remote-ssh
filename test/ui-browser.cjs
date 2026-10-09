@@ -42,6 +42,15 @@ async function main(){
   await page.evaluate(()=>{window.failConnect=false;window.delayConnect=true});await button('连接并打开').click();assert.equal(await button('连接并打开中…').isDisabled(),true);
   await page.waitForFunction(()=>window.calls.some(c=>c.method==='open-workspace'));
   assert.deepEqual(await page.evaluate(()=>window.calls.find(c=>c.method==='create-workspace').request),{path:'/demo/workspaces/connected'});
+  await button('移除工作区').click();await page.getByText(/将移除工作区并归档其中的会话/).waitFor();await button('取消').click();
+  assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='remove')),false);
+  await page.evaluate(()=>window.failRemove=true);await button('移除工作区').click();await button('确认移除并归档').click();
+  await page.getByRole('alert').filter({hasText:'仍有任务在运行'}).waitFor();await button('打开工作区').waitFor();
+  assert.equal(await page.evaluate(()=>window.mounts.length),1);
+  await page.evaluate(()=>window.failRemove=false);await button('确认移除并归档').click();
+  await page.getByText('工作区已移除，会话已归档，远程文件已保留。',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.archivedSessionIds),['demo-chat']);
+  await button('连接并打开').click();await button('检查连接').waitFor();
   await button('检查连接').click();await button('断开').click();await button('取消').click();assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='disconnect')),false);
   await button('断开').click();await button('确认断开').click();await page.getByText('还没有远程工作区',{exact:true}).waitFor();
   await page.setViewportSize({width:420,height:900});await page.getByRole('button',{name:/^更改目录/}).click();await dialog.getByText('这个目录没有子文件夹，可以直接选择当前目录。',{exact:true}).waitFor();
@@ -49,8 +58,12 @@ async function main(){
   mkdirSync(path.join(root,'test/artifacts'),{recursive:true});await page.screenshot({path:path.join(root,'test/artifacts/narrow-dark.png')});
   await page.keyboard.press('Escape');await page.evaluate(()=>document.documentElement.classList.remove('dark'));await page.screenshot({path:path.join(root,'test/artifacts/narrow-light.png')});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.evaluate(()=>{window.mounts=[{alias:'dev-server',remoteDir:'/project',localDir:'/demo/workspaces/native',status:'saved',checkedAt:null,message:''}];window.workspaceListeners.forEach(listener=>listener())});
+  await button('移除工作区').waitFor();
+  await page.evaluate(()=>{window.mounts=[];window.workspaceListeners.forEach(listener=>listener())});
+  await page.getByText('还没有远程工作区',{exact:true}).waitFor();
   await page.evaluate(()=>window.noHosts=true);await button('刷新服务器和工作区').click();await page.getByText('请先在 ~/.ssh/config 添加服务器，再点击刷新。',{exact:true}).waitFor();
-  assert.deepEqual(errors,[]);console.log('Browser checks passed: navigation, filter, hidden/root/empty folders, cancellation/retry, auth errors, host changes, connect/open/check/disconnect, keyboard and responsive layouts.');
+  assert.deepEqual(errors,[]);console.log('Browser checks passed: directory selection, connect/open/check/disconnect, archive/remove with cancel and active-session refusal, native sidebar refresh, keyboard and responsive layouts.');
  }finally{await browser.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>server.close());
