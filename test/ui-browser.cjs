@@ -12,7 +12,12 @@ async function main(){
   const page=await browser.newPage({viewport:{width:1280,height:880},deviceScaleFactor:1.5});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/test/preview/index.html`);
   await page.getByRole('heading',{name:'远程工作区',exact:true}).waitFor();
-  await page.getByText('SSH · dev-server · dev.example.com',{exact:true}).waitFor();
+  await page.getByLabel('远程主机 devbox',{exact:true}).waitFor();
+  assert.equal(await page.locator('.dsh-ssh-hostname-text').innerText(),'devbox');
+  assert.equal(await page.locator('.dsh-ssh-remote-dot').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(34, 197, 94)');
+  assert.equal(await page.locator('.dsh-ssh-hostname').getAttribute('title'),'SSH · dev-server');
+  mkdirSync(path.join(root,'test/artifacts'),{recursive:true});
+  await page.screenshot({path:path.join(root,'test/artifacts/remote-hostname-dark.png')});
   assert.equal((await page.locator('article').innerText()).includes('/demo/workspaces'),false);
   assert.equal(await page.evaluate(()=>window.sidebarEntry.spec.label),'远程工作区');
   const dialog=page.getByRole('dialog');const button=(name,scope=page)=>scope.getByRole('button',{name,exact:true});
@@ -49,7 +54,8 @@ async function main(){
   await page.waitForFunction(()=>window.calls.some(c=>c.method==='open-workspace'));
   assert.deepEqual(await page.evaluate(()=>window.calls.find(c=>c.method==='open').request),{local_path:'/demo/workspaces/connected'});
   assert.equal(await page.evaluate(()=>window.mounts[0].name),'机器人实验');
-  assert.equal(await page.locator('aside .workspace').innerText(),'机器人实验 · SSH staging.example.com');
+  assert.equal(await page.locator('aside .workspace').innerText(),'机器人实验 🟢 staging-box');
+  await page.getByLabel('远程主机 staging-box',{exact:true}).waitFor();
   await button('移除工作区').click();await page.getByText(/将移除工作区并归档其中的会话/).waitFor();await button('取消').click();
   assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='remove')),false);
   await page.evaluate(()=>window.failRemove=true);await button('移除工作区').click();await button('确认移除并归档').click();

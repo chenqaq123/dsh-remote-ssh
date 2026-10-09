@@ -26,7 +26,7 @@ const runtime = {
   mounts: new MountTable({ storageFile: join(scratch, 'mounts.json'), resolveHost: () => ({}) }),
   targetOf: (alias) => ({ alias }),
   runner: {
-    async hello() { calls++; if (failure) throw new Error('Permission denied (publickey)'); return 'test-host'; },
+    async hello() { calls++; if (failure) throw new Error('Permission denied (publickey)'); return 'host=GPU-DEV kernel=Linux gnu_stat=1'; },
     async run({ op, args }) {
       calls++;
       if (op === 'browse') {
@@ -77,6 +77,8 @@ try {
   let mount, second;
   await test('connects, persists, and reports a verified workspace', async () => {
     mount = await invoke('connect', { host: 'test-host', remote_path: '/project' });
+    assert.equal(mount.hostname, 'gpu-dev');
+    assert.equal(mount.title, 'project 🟢 gpu-dev');
     const snapshot = await invoke('list');
     assert.equal(snapshot.mounts[0].status, 'connected');
     assert.equal(snapshot.mounts[0].localDir, mount.localDir);

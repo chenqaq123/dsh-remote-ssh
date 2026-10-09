@@ -127,7 +127,7 @@ try {
     let timer;
     try {
       await Promise.race([renamed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('name migration did not start')), 2000); })]);
-      assert.equal(title, 'remote-project · SSH example.invalid');
+      assert.equal(title, 'remote-project 🟢 example.invalid');
     } finally { clearTimeout(timer); }
   });
 } finally {

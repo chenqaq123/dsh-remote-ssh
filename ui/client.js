@@ -25,7 +25,8 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page .dsh-ssh-primary{color:#fff;background:#3869df;border-color:#3869df}
       .dsh-ssh-page .dsh-ssh-primary:hover:not(:disabled){background:#2e5bc9}
       .dsh-ssh-form-footer{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin-top:20px}
-      .dsh-ssh-name-field{margin-top:18px}.dsh-ssh-hostname{font-size:12px;opacity:.62;margin:8px 0 0;overflow-wrap:anywhere}
+      .dsh-ssh-name-field{margin-top:18px}.dsh-ssh-hostname{display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;overflow-wrap:anywhere}
+      .dsh-ssh-hostname-text{font-family:ui-monospace,SFMono-Regular,monospace;opacity:.62}.dsh-ssh-remote-dot{width:7px;height:7px;flex-shrink:0;border-radius:50%;background:#22c55e}
       .dsh-ssh-section-title{display:flex;align-items:center;justify-content:space-between;margin:28px 0 13px}
       .dsh-ssh-section-title h2{font-size:14px;margin:0;font-weight:600}.dsh-ssh-count{opacity:.5;font-size:12px;margin-left:8px}
       .dsh-ssh-mount{border:1px solid color-mix(in srgb,currentColor 12%,transparent);border-radius:12px;padding:18px 20px;margin-bottom:10px}
@@ -228,7 +229,9 @@ window.__ModuleLoader__.load({
           snapshot.mounts.map((mount) => h('article', { className: 'dsh-ssh-mount', key: mount.localDir },
             h('div', { className: 'dsh-ssh-row' }, h('div', { className: 'dsh-ssh-host' }, h(Icon), mount.name),
               h('span', { className: `dsh-ssh-status ${mount.status}` }, statuses[mount.status])),
-            h('p', { className: 'dsh-ssh-hostname' }, `SSH · ${mount.alias}${mount.hostname !== mount.alias ? ` · ${mount.hostname}` : ''}`),
+            h('p', { className: 'dsh-ssh-hostname', title: `SSH · ${mount.alias}`, 'aria-label': `远程主机 ${mount.hostname.toLowerCase()}` },
+              h('span', { className: 'dsh-ssh-remote-dot', 'aria-hidden': true }),
+              h('span', { className: 'dsh-ssh-hostname-text' }, mount.hostname.toLowerCase())),
             h('p', { className: 'dsh-ssh-path' }, mount.remoteDir),
             mount.message && h('p', { className: 'dsh-ssh-error' }, friendly(new Error(mount.message))),
             h('div', { className: 'dsh-ssh-actions' },

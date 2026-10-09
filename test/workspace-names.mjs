@@ -26,15 +26,15 @@ function fixture(t) {
   return { scratch, records, registry, runtime, mounts, actions };
 }
 
-test('custom names persist and native workspaces display the SSH hostname', async t => {
+test('custom names persist and native workspaces display the remote hostname marker', async t => {
   const f = fixture(t);
   const connected = await f.actions.connect({ host: 'dev.example.com', remote_path: '/team/project', name: '  实验项目  ' });
   const result = await f.actions.open(connected.localDir);
   assert.equal(f.registry.list()[0].id, result.workspaceId);
-  assert.equal(f.registry.list()[0].title, '实验项目 · SSH dev.example.com');
+  assert.equal(f.registry.list()[0].title, '实验项目 🟢 dev.example.com');
   assert.equal(f.actions.list()[0].name, '实验项目');
   const stored = new MountTable({ storageFile: f.mounts.storageFile }).load().list()[0];
-  assert.equal(stored.name, '实验项目'); assert.equal(stored.workspaceTitle, '实验项目 · SSH dev.example.com');
+  assert.equal(stored.name, '实验项目'); assert.equal(stored.workspaceTitle, '实验项目 🟢 dev.example.com');
   const again = await f.actions.connect({ host: 'dev.example.com', remote_path: '/team/project' });
   assert.equal(again.localDir, connected.localDir); assert.equal(again.name, '实验项目');
 });
@@ -46,7 +46,7 @@ test('existing automatic titles are upgraded without changing paths or recreatin
   await f.registry.create(localDir); const identity = f.mounts.mounts.get(localDir);
   await f.actions.syncTitles();
   assert.equal(f.registry.list().length, 1);
-  assert.equal(f.registry.list()[0].title, 'project · SSH dev.example.com');
+  assert.equal(f.registry.list()[0].title, 'project 🟢 dev.example.com');
   assert.equal(f.registry.list()[0].path, localDir);
   assert.equal(f.mounts.mounts.get(localDir), identity, 'name changes must not invalidate in-flight commands');
 });
@@ -57,10 +57,62 @@ test('native renames are preserved and explicit new names replace earlier names 
   await f.registry.list()[0].setTitle('从侧边栏改的名字');
   assert.equal(f.actions.list()[0].name, '从侧边栏改的名字');
   await f.actions.open(mount.localDir); await f.actions.open(mount.localDir);
-  assert.equal(f.registry.list()[0].title, '从侧边栏改的名字 · SSH dev');
+  assert.equal(f.registry.list()[0].title, '从侧边栏改的名字 🟢 dev');
+  await f.registry.list()[0].setTitle('保留主机标识的名字 🟢 dev');
+  await f.actions.open(mount.localDir);
+  assert.equal(f.registry.list()[0].title, '保留主机标识的名字 🟢 dev');
   await f.actions.connect({ host: 'dev', remote_path: '/project', name: '新名称' });
   await f.actions.open(mount.localDir);
-  assert.equal(f.registry.list()[0].title, '新名称 · SSH dev');
+  assert.equal(f.registry.list()[0].title, '新名称 🟢 dev');
+});
+
+test('the helper hostname takes precedence over the SSH address and is lowercase', async t => {
+  const f = fixture(t);
+  f.runtime.runner.hello = async () => 'host=GPU-DEV kernel=Linux gnu_stat=1';
+  const mount = await f.actions.connect({ host: '192.0.2.10', remote_path: '/project', name: '实验项目' });
+  await f.actions.open(mount.localDir);
+  assert.equal(mount.hostname, 'gpu-dev');
+  assert.equal(f.registry.list()[0].title, '实验项目 🟢 gpu-dev');
+  const stored = new MountTable({ storageFile: f.mounts.storageFile }).load().list()[0];
+  assert.equal(stored.alias, '192.0.2.10');
+  assert.equal(stored.hostname, '192.0.2.10');
+  assert.equal(stored.remoteHostname, 'gpu-dev');
+  f.runtime.runner.hello = async () => 'host=unknown kernel=Linux gnu_stat=1';
+  assert.equal((await f.actions.connect({ host: '192.0.2.10', remote_path: '/project' })).hostname, 'gpu-dev');
+});
+
+test('checking legacy workspaces upgrades the hostname without duplicating renamed suffixes', async t => {
+  const f = fixture(t); const localDir = join(f.scratch, 'legacy'); mkdirSync(localDir);
+  const oldTitle = '原名称 · SSH 192.0.2.10';
+  f.mounts.put({ localDir, alias: '192.0.2.10', hostname: '192.0.2.10', remoteDir: '/project', name: '原名称', workspaceTitle: oldTitle });
+  const workspace = await f.registry.create(localDir);
+  await workspace.setTitle('侧边栏新名称 · SSH 192.0.2.10');
+  f.runtime.runner.hello = async () => 'host=DEVBOX kernel=Linux gnu_stat=1';
+  await f.actions.check(localDir);
+  await f.actions.syncTitles(); await f.actions.check(localDir);
+  assert.equal(workspace.title, '侧边栏新名称 🟢 devbox');
+  assert.equal(f.actions.list()[0].name, '侧边栏新名称');
+  const stored = new MountTable({ storageFile: f.mounts.storageFile }).load().list()[0];
+  assert.equal(stored.remoteHostname, 'devbox');
+  assert.equal(stored.workspaceTitle, workspace.title);
+  f.runtime.runner.hello = async () => 'host=NEW-DEVBOX kernel=Linux gnu_stat=1';
+  await workspace.setTitle('再次改名 🟢 devbox');
+  await f.actions.check(localDir);
+  assert.equal(workspace.title, '再次改名 🟢 new-devbox');
+});
+
+test('failed hostname persistence restores the native title and the existing mount', async t => {
+  const f = fixture(t); const mount = await f.actions.connect({ host: 'dev', remote_path: '/project' });
+  await f.actions.open(mount.localDir);
+  const workspace = f.registry.list()[0]; const oldTitle = workspace.title;
+  const identity = f.mounts.mounts.get(mount.localDir); const previous = { ...identity };
+  f.runtime.runner.hello = async () => 'host=DEVBOX kernel=Linux gnu_stat=1';
+  f.mounts.save = () => { throw new Error('disk full'); };
+  await assert.rejects(() => f.actions.check(mount.localDir), /disk full/);
+  assert.equal(workspace.title, oldTitle);
+  assert.equal(f.mounts.mounts.get(mount.localDir), identity);
+  assert.deepEqual(identity, previous);
+  assert.equal(f.runtime.workspaceBusy.size, 0);
 });
 
 test('invalid names are rejected before SSH and blank names use the remote folder', async t => {
