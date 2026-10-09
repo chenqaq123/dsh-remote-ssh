@@ -77,8 +77,8 @@ try {
   let mount, second;
   await test('connects, persists, and reports a verified workspace', async () => {
     mount = await invoke('connect', { host: 'test-host', remote_path: '/project' });
-    assert.equal(mount.hostname, 'gpu-dev');
-    assert.equal(mount.title, 'project 🟢 gpu-dev');
+    assert.equal(mount.hostname, 'test-host');
+    assert.equal(mount.title, 'project · test-host');
     const snapshot = await invoke('list');
     assert.equal(snapshot.mounts[0].status, 'connected');
     assert.equal(snapshot.mounts[0].localDir, mount.localDir);

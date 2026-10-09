@@ -1,10 +1,26 @@
 const {chromium}=require('playwright');
 const {createServer}=require('node:http');
-const {readFileSync,mkdirSync}=require('node:fs');
+const {readFileSync,mkdirSync,existsSync,openSync,readSync,closeSync}=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..');
-const server=createServer((req,res)=>{const file=path.resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end()};try{res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.html')?'text/html':'text/plain');res.end(readFileSync(file));}catch{res.writeHead(404);res.end();}});
+// Exercise the installed native workspace row when available; CI uses the same
+// structural fixture. The host application is read only and never modified.
+function nativeWorkspaceSource(){
+ const archive=process.env.DSH_UI_ASAR||'/Applications/DeepSeek Harness.app/Contents/Resources/app.asar';
+ if(!existsSync(archive))return '';
+ const fd=openSync(archive,'r');
+ try{
+  const sizes=Buffer.alloc(16);readSync(fd,sizes,0,16,0);
+  const metadata=Buffer.alloc(sizes.readUInt32LE(12));readSync(fd,metadata,0,metadata.length,16);
+  const header=JSON.parse(metadata.toString());let entry=header;
+  for(const part of ['dsh','node_modules','@deepseek-ai','dsh-client-ui-workspace','lib','client.js'])entry=entry.files[part];
+  const source=Buffer.alloc(entry.size);readSync(fd,source,0,source.length,8+sizes.readUInt32LE(4)+Number(entry.offset));
+  return source.toString().replace('exports.apply = apply;','exports.PreviewProjectRow = ProjectRowItem;\n\t\texports.apply = apply;');
+ }finally{closeSync(fd)}
+}
+const nativeSource=nativeWorkspaceSource();
+const server=createServer((req,res)=>{if(req.url==='/test/preview/harness-workspace.js'){res.setHeader('Content-Type','text/javascript');return res.end(nativeSource)}const file=path.resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end()};try{res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.html')?'text/html':'text/plain');res.end(readFileSync(file));}catch{res.writeHead(404);res.end();}});
 async function main(){
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
@@ -12,12 +28,23 @@ async function main(){
   const page=await browser.newPage({viewport:{width:1280,height:880},deviceScaleFactor:1.5});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/test/preview/index.html`);
   await page.getByRole('heading',{name:'远程工作区',exact:true}).waitFor();
-  await page.getByLabel('远程主机 devbox',{exact:true}).waitFor();
-  assert.equal(await page.locator('.dsh-ssh-hostname-text').innerText(),'devbox');
-  assert.equal(await page.locator('.dsh-ssh-remote-dot').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(34, 197, 94)');
-  assert.equal(await page.locator('.dsh-ssh-hostname').getAttribute('title'),'SSH · dev-server');
+  await page.getByLabel('远程主机 cgx190',{exact:true}).waitFor();
+  assert.equal(await page.locator('.dsh-ssh-hostname-text').innerText(),'cgx190');
+  assert.equal(await page.locator('article .dsh-ssh-remote-dot').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(134, 239, 172)');
+  assert.equal(await page.locator('.dsh-ssh-hostname').getAttribute('title'),'SSH · cgx190');
+  const sidebarRow=page.locator('[data-row-key="workspace:demo-workspace"]');
+  await sidebarRow.locator('.dsh-ssh-workspace-badge').waitFor();
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-name').innerText(),'lingbo');
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-name').evaluate(el=>getComputedStyle(el).fontSize),'14px');
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-badge').evaluate(el=>getComputedStyle(el).fontSize),'10px');
+  assert.equal(await sidebarRow.locator('.dsh-ssh-remote-dot').evaluate(el=>getComputedStyle(el).width),'4px');
+  assert.equal(await sidebarRow.locator('.dsh-ssh-remote-dot').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(134, 239, 172)');
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-badge').innerText(),'cgx190');
+  await sidebarRow.click();assert.equal(await page.evaluate(()=>window.rowToggles),1);
+  await page.waitForTimeout(50);assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-badge').count(),1);
   mkdirSync(path.join(root,'test/artifacts'),{recursive:true});
   await page.screenshot({path:path.join(root,'test/artifacts/remote-hostname-dark.png')});
+  await sidebarRow.locator('.dsh-ssh-workspace-label').screenshot({path:path.join(root,'test/artifacts/sidebar-badge.png')});
   assert.equal((await page.locator('article').innerText()).includes('/demo/workspaces'),false);
   assert.equal(await page.evaluate(()=>window.sidebarEntry.spec.label),'远程工作区');
   const dialog=page.getByRole('dialog');const button=(name,scope=page)=>scope.getByRole('button',{name,exact:true});
@@ -31,7 +58,7 @@ async function main(){
   await button('选择此目录',dialog).click();await button('更改目录 /home/demo/projects/sample-project').waitFor();
   await page.getByRole('textbox',{name:'工作区名称'}).fill('示例项目');
   if(process.env.UPDATE_SCREENSHOTS)await page.screenshot({path:path.join(root,'docs/remote-workspace.png')});
-  await page.getByRole('combobox').selectOption('staging');await button('选择远程目录').waitFor();assert.equal(await button('连接并打开').isDisabled(),true);
+  await page.getByRole('combobox').selectOption('cgx30');await button('选择远程目录').waitFor();assert.equal(await button('连接并打开').isDisabled(),true);
   assert.equal(await page.getByRole('textbox',{name:'工作区名称'}).inputValue(),'');
   await button('选择远程目录').click();await button('打开文件夹 projects',dialog).waitFor();
   await dialog.getByRole('checkbox',{name:'显示隐藏文件夹'}).check();await button('打开文件夹 .config',dialog).waitFor();
@@ -54,8 +81,9 @@ async function main(){
   await page.waitForFunction(()=>window.calls.some(c=>c.method==='open-workspace'));
   assert.deepEqual(await page.evaluate(()=>window.calls.find(c=>c.method==='open').request),{local_path:'/demo/workspaces/connected'});
   assert.equal(await page.evaluate(()=>window.mounts[0].name),'机器人实验');
-  assert.equal(await page.locator('aside .workspace').innerText(),'机器人实验 🟢 staging-box');
-  await page.getByLabel('远程主机 staging-box',{exact:true}).waitFor();
+  await sidebarRow.getByLabel('远程服务器 cgx30',{exact:true}).waitFor();
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-name').innerText(),'机器人实验');
+  await page.getByLabel('远程主机 cgx30',{exact:true}).waitFor();
   await button('移除工作区').click();await page.getByText(/将移除工作区并归档其中的会话/).waitFor();await button('取消').click();
   assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='remove')),false);
   await page.evaluate(()=>window.failRemove=true);await button('移除工作区').click();await button('确认移除并归档').click();
@@ -78,7 +106,15 @@ async function main(){
   await page.evaluate(()=>{window.mounts=[];window.workspaceListeners.forEach(listener=>listener())});
   await page.getByText('还没有远程工作区',{exact:true}).waitFor();
   await page.evaluate(()=>window.noHosts=true);await button('刷新服务器和工作区').click();await page.getByText('请先在 ~/.ssh/config 添加服务器，再点击刷新。',{exact:true}).waitFor();
-  assert.deepEqual(errors,[]);console.log('Browser checks passed: directory selection, connect/open/check/disconnect, archive/remove with cancel and active-session refusal, native sidebar refresh, keyboard and responsive layouts.');
+  await page.setViewportSize({width:1280,height:880});
+  await page.evaluate(()=>{window.mounts=[{name:'改名后',hostname:'cgx190',alias:'cgx190',workspaceId:'demo-workspace',title:'改名后 · cgx190',remoteDir:'/project',localDir:'/demo/workspaces/native',status:'saved',checkedAt:null,message:''}];window.nativeWorkspaces=[{workspaceId:'demo-workspace',path:'/demo/workspaces/native',title:'改名后 · cgx190'}];window.renderSidebar();window.workspaceListeners.forEach(listener=>listener())});
+  await sidebarRow.getByLabel('远程服务器 cgx190',{exact:true}).waitFor();
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-name').innerText(),'改名后');
+  await page.evaluate(()=>window.disposePlugin());
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-badge').count(),0);
+  assert.equal(await sidebarRow.locator('.dsh-ssh-workspace-label').count(),0);
+  assert.ok((await sidebarRow.innerText()).includes('改名后 · cgx190'));
+  assert.deepEqual(errors,[]);console.log(`Browser checks passed (${nativeSource?'installed native workspace row':'native row fixture'}): separate name and server type sizes, 4px light-green dots, native rerenders, cleanup, directory selection, workspace actions and responsive layouts.`);
  }finally{await browser.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>server.close());

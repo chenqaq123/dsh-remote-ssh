@@ -29,6 +29,7 @@ export async function registerSshUi(ctx, host, runtime) {
   new SshRemoteUi(ctx);
   const label = { name: z.string(), hostname: z.string(), title: z.string() };
   const mount = z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(),
+    workspaceId: z.string().optional(),
     status: z.enum(['saved', 'connected', 'error']), checkedAt: z.string().nullable(), message: z.string() });
   const pathRequest = z.object({ local_path: z.string().min(1).max(8192) }).strict();
   const definitions = {

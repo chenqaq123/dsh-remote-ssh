@@ -1,14 +1,25 @@
 <!doctype html><html lang="zh-CN" class="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSH remote workspaces — demo</title><style>
-:root{color-scheme:light;--dsh-frame-top-clearance:24px}*{box-sizing:border-box}body{margin:0;background:Canvas;color:CanvasText;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}html.dark{color-scheme:dark}#app{display:flex;height:100vh}aside{width:230px;flex-shrink:0;padding:34px 18px;background:color-mix(in srgb,CanvasText 5%,Canvas);border-right:1px solid #8883}aside strong{display:block;font-size:18px;margin:6px 8px 34px}aside small{display:block;font-size:10px;letter-spacing:2px;opacity:.5;margin-top:8px}aside .entry{padding:13px 12px;font-size:14px;display:flex;gap:9px;align-items:center;border-radius:9px;background:#6d8ec51f}aside p{font-size:12px;opacity:.45;margin:28px 10px 12px}aside .workspace{font-size:13px;margin-left:10px}main{flex:1;min-width:0}#root{height:100%}@media(max-width:700px){aside{display:none}}
-</style></head><body><div id="app"><aside><strong>DeepSeek Harness<small>REMOTE WORKSPACES</small></strong><div id="sidebar"></div><p>工作区</p><div class="workspace">▱ &nbsp; 示例项目 🟢 devbox</div></aside><main><div id="root"></div></main></div>
+:root{color-scheme:light;--dsh-frame-top-clearance:24px;--dsw-alias-label-primary:CanvasText;--dsw-alias-label-tertiary:#8a8f98;--dsw-alias-interactive-bg-hover:#8881}*{box-sizing:border-box}body{margin:0;background:Canvas;color:CanvasText;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}html.dark{color-scheme:dark}#app{display:flex;height:100vh}aside{width:230px;flex-shrink:0;padding:34px 18px;background:color-mix(in srgb,CanvasText 5%,Canvas);border-right:1px solid #8883}aside strong{display:block;font-size:18px;margin:6px 8px 34px}aside small{display:block;font-size:10px;letter-spacing:2px;opacity:.5;margin-top:8px}aside .entry{padding:13px 12px;font-size:14px;display:flex;gap:9px;align-items:center;border-radius:9px;background:#6d8ec51f}aside p{font-size:12px;opacity:.45;margin:28px 10px 12px}.workspace{display:flex;align-items:center;gap:6px;height:34px;padding:0 8px}.native-title{font-size:14px;line-height:20px;overflow:hidden}main{flex:1;min-width:0}#root{height:100%}@media(max-width:700px){aside{display:none}}
+</style></head><body><div id="app"><aside><strong>DeepSeek Harness<small>REMOTE WORKSPACES</small></strong><div id="sidebar"></div><p>工作区</p><div id="workspaces"></div></aside><main><div id="root"></div></main></div>
 <script src="../../node_modules/react/umd/react.development.js"></script><script src="../../node_modules/react-dom/umd/react-dom.development.js"></script>
-<script>window.__ModuleLoader__={load(bundle){window.sshBundle=bundle}};</script><script src="../../ui/client.js"></script><script>
+<script>window.__ModuleLoader__={load(bundle){if(bundle.id==='dsh-ssh-remote')window.sshBundle=bundle;else window.nativeWorkspaceBundle=bundle}};</script><script src="harness-workspace.js"></script><script src="../../ui/client.js"></script><script>
 // Fictional fixtures only: this preview never reads SSH configuration or connects.
 const plugin=window.sshBundle.factory(name=>({react:React})[name]);
+const h=React.createElement;
+const folderIcon=()=>h('svg',{width:16,height:16,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z'}));
+const primitives=new Proxy({Tooltip:({children})=>children,HoverCard:({anchor})=>anchor,Menu:({anchor})=>anchor},{get(target,key){return target[key]||folderIcon}});
+const native=window.nativeWorkspaceBundle?.factory(name=>({'react':React,'react/jsx-runtime':{jsx:(type,props,key)=>h(type,{...props,key}),jsxs:(type,props,key)=>h(type,{...props,key}),Fragment:React.Fragment},'@deepseek-ai/cordis':{Service:class{}},'@deepseek-ai/dsh-client-store':{},'@deepseek-ai/dsh-client-ui-primitives':primitives})[name]);
+const NativeRow=native?.PreviewProjectRow||function({group,onToggle}){return h('div',{'data-row-key':'workspace:'+group.key,className:'workspace',onClick:onToggle,role:'treeitem'},h('span',null,h(folderIcon)),h('span',{style:{display:'none'}}),h('span',{style:{flex:1,minWidth:0}},h('span',{className:'native-title'},group.label)),h('span'))};
 window.calls=[];window.failConnect=false;window.delayConnect=false;window.noHosts=false;
 window.workspaceListeners=new Set();window.archivedSessionIds=[];
-window.mounts=[{name:'示例项目',hostname:'devbox',alias:'dev-server',remoteDir:'/home/demo/projects/sample-project',localDir:'/demo/workspaces/sample-project',status:'saved',checkedAt:null,message:''}];
-window.hosts=[{alias:'dev-server',hostname:'dev.example.com',remoteHostname:'DEVBOX'},{alias:'staging',hostname:'staging.example.com',remoteHostname:'STAGING-BOX'}];
+window.mounts=[{name:'lingbo',hostname:'cgx190',alias:'cgx190',title:'lingbo · cgx190',workspaceId:'demo-workspace',remoteDir:'/home/demo/projects/sample-project',localDir:'/demo/workspaces/sample-project',status:'saved',checkedAt:null,message:''}];
+window.hosts=[{alias:'cgx190',hostname:'192.0.2.190'},{alias:'cgx30',hostname:'192.0.2.30'}];
+window.nativeWorkspaces=[{workspaceId:'demo-workspace',path:'/demo/workspaces/sample-project',title:'lingbo · cgx190'}];
+window.rowToggles=0;window.rowExpanded=false;
+const nativeRoot=ReactDOM.createRoot(document.getElementById('workspaces'));
+window.renderSidebar=()=>nativeRoot.render(h(React.Fragment,null,window.nativeWorkspaces.map(workspace=>h(NativeRow,{key:workspace.workspaceId,group:{key:workspace.workspaceId,workspaceId:workspace.workspaceId,label:workspace.title,expanded:window.rowExpanded},onToggle(){window.rowToggles++;window.rowExpanded=!window.rowExpanded;window.renderSidebar()},onCreate(){},t:key=>key}))));
+const pluginDisposers=[];
+window.disposePlugin=()=>{for(const dispose of pluginDisposers.reverse())dispose()};
 const folders={'/':['home','srv'],'/home':['demo'],'/home/demo':['.config','Documents','projects'],'/home/demo/projects':['api-service','sample-project','website'],'/home/demo/projects/sample-project':['docs','src','tests']};
 function delay(ms,signal){return new Promise((resolve,reject)=>{if(signal?.aborted)return reject(signal.reason);const id=setTimeout(resolve,ms);signal?.addEventListener('abort',()=>{clearTimeout(id);reject(signal.reason)},{once:true})})}
 const ctx={
@@ -25,22 +36,24 @@ const ctx={
   if(method==='connect'){
    if(window.delayConnect)await delay(350,signal);
    if(window.failConnect)return {ok:false,error:{message:'Permission denied (publickey)'}};
-   const value={name:request.name||request.remote_path.split('/').pop(),hostname:window.hosts.find(h=>h.alias===request.host).remoteHostname.toLowerCase(),alias:request.host,remoteDir:request.remote_path,localDir:'/demo/workspaces/connected',status:'connected',checkedAt:new Date().toISOString(),message:''};window.mounts=[value];return {ok:true,value};
+   const value={name:request.name||request.remote_path.split('/').pop(),hostname:request.host,alias:request.host,remoteDir:request.remote_path,localDir:'/demo/workspaces/connected',status:'connected',checkedAt:new Date().toISOString(),message:''};value.title=value.name+' · '+value.hostname;window.mounts=[value];return {ok:true,value};
   }
-  if(method==='open'){document.querySelector('aside .workspace').textContent=window.mounts[0].name+' 🟢 '+window.mounts[0].hostname;return {ok:true,value:{workspaceId:'demo-workspace'}};}
+  if(method==='open'){window.mounts[0].workspaceId='demo-workspace';window.nativeWorkspaces=[{workspaceId:'demo-workspace',path:window.mounts[0].localDir,title:window.mounts[0].title}];window.renderSidebar();window.workspaceListeners.forEach(listener=>listener());return {ok:true,value:{workspaceId:'demo-workspace'}};}
   if(method==='check'){window.mounts[0].status='connected';window.mounts[0].checkedAt=new Date().toISOString();return {ok:true,value:window.mounts[0]};}
   if(method==='disconnect'){window.mounts=[];return {ok:true,value:{closed:true}};}
   if(method==='remove'){
    if(window.failRemove)return {ok:false,error:{message:'工作区中仍有任务在运行，请先结束任务，再移除工作区。'}};
-   window.mounts=[];window.archivedSessionIds=['demo-chat'];window.workspaceListeners.forEach(listener=>listener());
+   window.mounts=[];window.nativeWorkspaces=[];window.renderSidebar();window.archivedSessionIds=['demo-chat'];window.workspaceListeners.forEach(listener=>listener());
    return {ok:true,value:{removed:true,localDir:request.local_path,archivedSessionIds:window.archivedSessionIds}};
   }
  }}},
- workspaces:{list:{subscribe(listener){window.workspaceListeners.add(listener);return ()=>window.workspaceListeners.delete(listener)}}},
+ workspaces:{list:{getSnapshot(){return {items:window.nativeWorkspaces}},subscribe(listener){window.workspaceListeners.add(listener);return ()=>window.workspaceListeners.delete(listener)}}},
+ effect(run){const dispose=run();if(typeof dispose==='function')pluginDisposers.push(dispose)},
  uiWorkspace:{async openWorkspace(id){window.calls.push({method:'open-workspace',id})}},
  slots:{inject(name,fn){return fn()},register(spec,Component){if(spec.name==='main')window.panel={spec,Component};else window.sidebarEntry={spec,Component};return ()=>{}}},
 };
 plugin.apply(ctx);
+window.renderSidebar();
 ReactDOM.createRoot(document.getElementById('sidebar')).render(React.createElement('div',{className:'entry'},React.createElement(window.sidebarEntry.Component),window.sidebarEntry.spec.label));
 window.previewRoot=ReactDOM.createRoot(document.getElementById('root'));
 window.previewRoot.render(React.createElement(window.panel.Component,{...window.panel.spec.inject()}));window.ready=true;

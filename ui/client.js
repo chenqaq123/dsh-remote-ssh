@@ -6,7 +6,14 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const { useState, useEffect, useRef } = React;
     const PANEL = 'ssh-remote';
+    const BADGE_CSS = `
+      .dsh-ssh-workspace-label{display:flex!important;align-items:center;gap:7px;min-width:0}
+      .dsh-ssh-workspace-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .dsh-ssh-workspace-badge{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font-size:10px;font-weight:400;line-height:1.4;color:var(--dsw-alias-label-tertiary,#8a8f98)}
+      .dsh-ssh-remote-dot{width:4px;height:4px;flex-shrink:0;border-radius:50%;background:#86efac}
+    `;
     const CSS = `
+      ${BADGE_CSS}
       .dsh-ssh-page{height:100%;overflow:auto;box-sizing:border-box;padding:calc(var(--dsh-frame-top-clearance,24px) + 24px) 36px 48px;color:inherit;font-family:inherit}
       .dsh-ssh-inner{max-width:860px;margin:0 auto}.dsh-ssh-page *{box-sizing:border-box}
       .dsh-ssh-header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}
@@ -25,8 +32,8 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page .dsh-ssh-primary{color:#fff;background:#3869df;border-color:#3869df}
       .dsh-ssh-page .dsh-ssh-primary:hover:not(:disabled){background:#2e5bc9}
       .dsh-ssh-form-footer{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin-top:20px}
-      .dsh-ssh-name-field{margin-top:18px}.dsh-ssh-hostname{display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;overflow-wrap:anywhere}
-      .dsh-ssh-hostname-text{font-family:ui-monospace,SFMono-Regular,monospace;opacity:.62}.dsh-ssh-remote-dot{width:7px;height:7px;flex-shrink:0;border-radius:50%;background:#22c55e}
+      .dsh-ssh-name-field{margin-top:18px}.dsh-ssh-hostname{display:flex;align-items:center;gap:4px;font-size:10px;margin:8px 0 0;overflow-wrap:anywhere}
+      .dsh-ssh-hostname-text{font-family:ui-monospace,SFMono-Regular,monospace;opacity:.62}
       .dsh-ssh-section-title{display:flex;align-items:center;justify-content:space-between;margin:28px 0 13px}
       .dsh-ssh-section-title h2{font-size:14px;margin:0;font-weight:600}.dsh-ssh-count{opacity:.5;font-size:12px;margin-left:8px}
       .dsh-ssh-mount{border:1px solid color-mix(in srgb,currentColor 12%,transparent);border-radius:12px;padding:18px 20px;margin-bottom:10px}
@@ -54,6 +61,82 @@ window.__ModuleLoader__.load({
       .dsh-ssh-dialog-footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
       @media(max-width:650px){.dsh-ssh-page{padding-left:18px;padding-right:18px}.dsh-ssh-grid{grid-template-columns:1fr}.dsh-ssh-card{padding:18px}.dsh-ssh-form-footer{align-items:flex-start;flex-direction:column}.dsh-ssh-form-footer button{width:100%}.dsh-ssh-header{align-items:flex-start}.dsh-ssh-row{gap:8px}}
     `;
+    /** The native workspace row has no title slot; decorate only its label span. */
+    function installWorkspaceBadges(ctx, api) {
+      const lifetime = new AbortController();
+      const style = document.createElement('style');
+      style.textContent = BADGE_CSS;
+      document.head.appendChild(style);
+      const decorated = new Map();
+      let mounts = [];
+      let frame;
+      const rows = '[data-row-key^="workspace:"]';
+      const workspaceItems = () => ctx.workspaces.list.getSnapshot?.().items ?? [];
+      const restore = (label, record) => {
+        const title = workspaceItems().find(item => item.workspaceId === record.id)?.title ?? record.title;
+        label.textContent = title;
+        label.classList.remove('dsh-ssh-workspace-label');
+        decorated.delete(label);
+      };
+      function render() {
+        frame = undefined;
+        if (lifetime.signal.aborted) return;
+        const items = workspaceItems();
+        const byId = new Map(mounts.map(mount => [mount.workspaceId ?? items.find(item => item.path === mount.localDir)?.workspaceId, mount]));
+        for (const [label, record] of decorated) {
+          if (!label.isConnected || !byId.has(record.id)) restore(label, record);
+        }
+        for (const row of document.querySelectorAll(rows)) {
+          const id = row.getAttribute('data-row-key').slice('workspace:'.length);
+          const mount = byId.get(id);
+          if (!mount) continue;
+          // Folder, chevron, label, actions: use the native label's structural seat,
+          // without depending on generated CSS class names or touching row events.
+          const label = row.querySelector(':scope > span:nth-of-type(3) > span');
+          if (!label) continue;
+          const record = decorated.get(label);
+          const name = label.querySelector('.dsh-ssh-workspace-name');
+          const badge = label.querySelector('.dsh-ssh-workspace-badge');
+          if (name?.textContent === mount.name && badge?.textContent === mount.hostname) continue;
+          const title = items.find(item => item.workspaceId === id)?.title ?? (record && name && badge ? record.title : label.textContent);
+          const nameNode = document.createElement('span');
+          nameNode.className = 'dsh-ssh-workspace-name';
+          nameNode.textContent = mount.name;
+          const badgeNode = document.createElement('span');
+          badgeNode.className = 'dsh-ssh-workspace-badge';
+          badgeNode.setAttribute('aria-label', `远程服务器 ${mount.hostname}`);
+          badgeNode.title = `SSH · ${mount.alias}`;
+          const dot = document.createElement('span');
+          dot.className = 'dsh-ssh-remote-dot';
+          dot.setAttribute('aria-hidden', 'true');
+          badgeNode.append(dot, document.createTextNode(mount.hostname));
+          label.classList.add('dsh-ssh-workspace-label');
+          label.replaceChildren(nameNode, document.createTextNode(' '), badgeNode);
+          decorated.set(label, { id, title });
+        }
+      }
+      const schedule = () => {
+        if (frame === undefined && !lifetime.signal.aborted) frame = requestAnimationFrame(render);
+      };
+      const observer = new MutationObserver(records => {
+        if (records.some(record => (record.target.nodeType === 1 ? record.target : record.target.parentElement)?.closest(rows)
+          || [...record.addedNodes].some(node => node.nodeType === 1 && (node.matches(rows) || node.querySelector(rows))))) schedule();
+      });
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      const refresh = () => api('list', undefined, lifetime.signal).catch(() => {});
+      const unsubscribe = ctx.workspaces.list.subscribe(refresh);
+      refresh();
+      return { refresh, update(snapshot) {
+        if (lifetime.signal.aborted) return;
+        mounts = snapshot.mounts;
+        schedule();
+      }, dispose() {
+        lifetime.abort(); unsubscribe(); observer.disconnect();
+        if (frame !== undefined) cancelAnimationFrame(frame);
+        for (const [label, record] of decorated) restore(label, record);
+        style.remove();
+      } };
+    }
     function Icon({ size = 18 } = {}) {
       return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
         stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
@@ -260,12 +343,25 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'layout', 'connection', 'workspaces', 'uiWorkspace'],
       apply(ctx) {
+        let badges;
+        let listRevision = 0;
+        let appliedListRevision = 0;
         const api = async (method, request, signal) => {
+          const revision = method === 'list' ? ++listRevision : 0;
           const result = await ctx.connection.rpc.call('/api', `sshRemoteUi/${method}`,
             { args: request === undefined ? {} : { request } }, signal);
           if (!result.ok) throw new Error(result.error.message);
+          if (method === 'list' && revision >= appliedListRevision) {
+            appliedListRevision = revision;
+            badges?.update(result.value);
+          }
+          if (['connect', 'open', 'check', 'disconnect', 'remove'].includes(method)) badges?.refresh();
           return result.value;
         };
+        ctx.effect(() => {
+          badges = installWorkspaceBadges(ctx, api);
+          return () => { badges.dispose(); badges = undefined; };
+        });
         const openWorkspace = async (localDir, signal) => {
           signal?.throwIfAborted();
           const workspace = await api('open', { local_path: localDir }, signal);

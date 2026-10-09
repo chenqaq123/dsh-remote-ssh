@@ -1,6 +1,6 @@
 {
   "name": "dsh-ssh-remote",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "SSH remote workspaces and a graphical directory picker for DeepSeek Harness Desktop.",
   "type": "module",
   "main": "index.js",
