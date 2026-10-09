@@ -8,7 +8,9 @@
 
 选择服务器 → 点击「选择服务器上的文件夹…」→ 打开项目文件夹 →「选择此目录」→「连接并打开」。
 
-目录选择器从服务器主目录开始，支持面包屑、上一级、文件夹筛选、隐藏目录和手动跳转。浏览不会创建工作区，确认连接后才保存。切换服务器会清空旧的目录选择。
+连接时可填写「工作区名称」，留空默认使用项目文件夹名。侧边栏显示「名称 · SSH 主机」，远程面板同时显示服务器别名、hostname 和远程目录。
+
+目录选择器从服务器主目录开始，支持面包屑、上一级、文件夹筛选和隐藏目录。浏览不会创建工作区，确认连接后才保存。切换服务器会清空旧的目录选择。
 
 ![远程目录选择器](docs/directory-picker.png)
 
@@ -38,7 +40,7 @@ ssh dev-server
 ```sh
 git clone https://github.com/chenqaq123/dsh-remote-ssh.git
 cd dsh-remote-ssh
-git checkout v0.3.2
+git checkout v0.4.0
 node scripts/profile.mjs install desktop
 ```
 
@@ -51,7 +53,7 @@ node scripts/profile.mjs install desktop
 仓库包含完整 npm 包元数据和命令入口，可直接从 GitHub tag 安装，无需等待 npm registry 发布：
 
 ```sh
-npm install -g --install-links git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.3.2
+npm install -g --install-links git+https://github.com/chenqaq123/dsh-remote-ssh.git#v0.4.0
 dsh-ssh-remote install desktop
 ```
 

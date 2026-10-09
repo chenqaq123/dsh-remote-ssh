@@ -7,6 +7,7 @@ import { loadHostModules } from '../lib/host-modules.js';
 import { installWorkspaceRemoval } from '../lib/workspace-removal.js';
 import { MountTable } from '../lib/mounts.js';
 import { registerSshUi } from '../ui/host.js';
+import { createWorkspaceActions } from '../lib/workspace-actions.js';
 
 const host = await loadHostModules();
 const { WorkspaceRegistry } = await import(`${host.root}/dsh-workspace/lib/index.js`);
@@ -39,7 +40,12 @@ try {
   await remote.attachSession('remote-chat'); await local.attachSession('local-chat');
   const mounts = new MountTable({ storageFile: join(scratch, 'mounts.json') });
   mounts.put({ localDir: remotePath, alias: 'test.invalid', remoteDir: '/project' });
-  const runtime = { mounts, runner: { async close() { return true; } }, targetOf: alias => ({ alias }) };
+  const runtime = { ctx, config: {}, mounts, runner: { async close() { return true; } }, targetOf: alias => ({ alias }) };
+  runtime.workspaceActions = createWorkspaceActions(runtime);
+  mounts.mounts.get(remotePath).name = '测试项目';
+  const opened = await runtime.workspaceActions.open(remotePath);
+  assert.equal(opened.workspaceId, remote.id);
+  assert.equal(registry.get(remote.id).title, '测试项目 · SSH test.invalid');
   const originalDescriptor = Object.getOwnPropertyDescriptor(registry, 'delete');
   dispose = installWorkspaceRemoval(ctx, runtime);
   const controller = new WorkspaceController(ctx);
@@ -53,6 +59,10 @@ try {
   await registry.unarchiveSession('remote-chat'); await registry.unarchiveSession('old-ungrouped');
   mounts.put({ localDir: remotePath, alias: 'test.invalid', remoteDir: '/project' });
   await registerSshUi(ctx, host, runtime);
+  const reopened = await gateway.invoke({ namespace: 'sshRemoteUi', method: 'open', args: { request: { local_path: remotePath } } });
+  assert.equal(registry.get(reopened.workspaceId).title, 'project · SSH test.invalid');
+  // Retain the original orphan-removal coverage after checking the open RPC.
+  dispose(); await registry.delete(reopened.workspaceId); dispose = installWorkspaceRemoval(ctx, runtime);
   const invoke = request => gateway.invoke({ namespace: 'sshRemoteUi', method: 'remove', args: { request } });
   await assert.rejects(() => invoke({ local_path: remotePath, unexpected: true }));
   assert.equal(mounts.list().length, 1);

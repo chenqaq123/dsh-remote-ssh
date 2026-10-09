@@ -1,6 +1,6 @@
 {
   "name": "dsh-ssh-remote",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "SSH remote workspaces and a graphical directory picker for DeepSeek Harness Desktop.",
   "type": "module",
   "main": "index.js",
@@ -56,7 +56,7 @@
     "dsh-ssh-remote": "scripts/profile.mjs"
   },
   "scripts": {
-    "test": "node test/run.mjs && node --test test/regression.mjs test/install.mjs test/socket-path.mjs test/workspace-removal.mjs",
+    "test": "node test/run.mjs && node --test test/regression.mjs test/install.mjs test/socket-path.mjs test/workspace-removal.mjs test/workspace-names.mjs test/shell-status.mjs",
     "test:ui": "node test/ui-browser.cjs",
     "test:harness": "node test/local-startup.mjs && node test/ui-rpc.mjs && node test/harness-removal.mjs",
     "prepack": "npm test"

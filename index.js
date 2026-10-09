@@ -214,6 +214,7 @@ export function apply(ctx, rawConfig) {
   new SshFileSystem(ctx, config);
   new SshShellExecutor(ctx, config);
   runtime.workspaceActions = createWorkspaceActions(runtime);
+  ctx.inject(['workspaceRegistry'], () => runtime.workspaceActions.syncTitles());
   ctx.inject(['workspaceRegistry', 'sessionPersistence'], (scope) => {
     scope.effect(() => installWorkspaceRemoval(scope, runtime));
   });

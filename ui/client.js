@@ -24,11 +24,12 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page button:disabled{opacity:.45;cursor:default}
       .dsh-ssh-page .dsh-ssh-primary{color:#fff;background:#3869df;border-color:#3869df}
       .dsh-ssh-page .dsh-ssh-primary:hover:not(:disabled){background:#2e5bc9}
-      .dsh-ssh-form-footer{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:20px}
+      .dsh-ssh-form-footer{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin-top:20px}
+      .dsh-ssh-name-field{margin-top:18px}.dsh-ssh-hostname{font-size:12px;opacity:.62;margin:8px 0 0;overflow-wrap:anywhere}
       .dsh-ssh-section-title{display:flex;align-items:center;justify-content:space-between;margin:28px 0 13px}
       .dsh-ssh-section-title h2{font-size:14px;margin:0;font-weight:600}.dsh-ssh-count{opacity:.5;font-size:12px;margin-left:8px}
       .dsh-ssh-mount{border:1px solid color-mix(in srgb,currentColor 12%,transparent);border-radius:12px;padding:18px 20px;margin-bottom:10px}
-      .dsh-ssh-row{display:flex;align-items:center;justify-content:space-between;gap:15px}.dsh-ssh-host{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px}
+      .dsh-ssh-row{display:flex;align-items:center;justify-content:space-between;gap:15px}.dsh-ssh-host{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;min-width:0;overflow-wrap:anywhere}.dsh-ssh-host svg{flex-shrink:0}
       .dsh-ssh-path{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;line-height:1.7;overflow-wrap:anywhere;opacity:.75;margin:9px 0 12px}
       .dsh-ssh-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.dsh-ssh-status{font-size:11px;white-space:nowrap;border-radius:20px;padding:4px 9px;background:color-mix(in srgb,currentColor 7%,transparent)}
       .dsh-ssh-status.connected{color:#238155;background:#23815515}.dsh-ssh-status.error{color:#ce5656;background:#ce565615}
@@ -38,7 +39,6 @@ window.__ModuleLoader__.load({
       .dsh-ssh-notice{font-size:13px;padding:12px 14px;background:#2381550d;border:1px solid #23815533;border-radius:9px;margin-bottom:16px}
       .dsh-ssh-confirm{margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent)}
       .dsh-ssh-confirm p{margin-bottom:12px}.dsh-ssh-page .dsh-ssh-danger{color:#c34c4c;border-color:#c34c4c55}
-      .dsh-ssh-details{font-size:12px;opacity:.65;margin-top:10px}.dsh-ssh-details summary{cursor:pointer}.dsh-ssh-details p{overflow-wrap:anywhere;font-family:ui-monospace,monospace}
       .dsh-ssh-page .dsh-ssh-picker{height:42px;text-align:left;display:flex;align-items:center;gap:9px;min-width:0;width:100%}
       .dsh-ssh-picker span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-ssh-picker svg{flex-shrink:0;color:#6796f5}
       .dsh-ssh-page dialog{color:CanvasText;background:Canvas;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:16px;padding:24px;width:min(600px,calc(100vw - 32px));max-height:85vh;overflow:auto;box-shadow:0 24px 80px #0005}
@@ -50,8 +50,7 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page .dsh-ssh-folder{display:flex;width:100%;align-items:center;gap:10px;border:0;text-align:left;padding:10px 8px}
       .dsh-ssh-folder svg{flex-shrink:0;color:#6796f5}.dsh-ssh-folder span{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}.dsh-ssh-folder b{margin-left:auto;font-weight:400;opacity:.5}
       .dsh-ssh-check{display:flex;align-items:center;gap:8px;font-size:12px}.dsh-ssh-page .dsh-ssh-check input{width:15px;height:15px}
-      .dsh-ssh-dialog-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
-      .dsh-ssh-location{display:flex;gap:8px;margin:12px 0}.dsh-ssh-selected{margin:12px 0 0;font-size:12px;overflow-wrap:anywhere;opacity:.65}
+      .dsh-ssh-dialog-footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
       @media(max-width:650px){.dsh-ssh-page{padding-left:18px;padding-right:18px}.dsh-ssh-grid{grid-template-columns:1fr}.dsh-ssh-card{padding:18px}.dsh-ssh-form-footer{align-items:flex-start;flex-direction:column}.dsh-ssh-form-footer button{width:100%}.dsh-ssh-header{align-items:flex-start}.dsh-ssh-row{gap:8px}}
     `;
     function Icon({ size = 18 } = {}) {
@@ -81,7 +80,6 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('');
       const [hidden, setHidden] = useState(false);
       const [filter, setFilter] = useState('');
-      const [location, setLocation] = useState(initialPath);
       async function browse(path, showHidden = hidden) {
         controller.current?.abort();
         const request = new AbortController();
@@ -90,7 +88,7 @@ window.__ModuleLoader__.load({
         try {
           const next = await api('browse', { host, path, show_hidden: showHidden }, request.signal);
           if (request.signal.aborted) return;
-          setData(next); setLocation(next.path);
+          setData(next);
         } catch (e) { if (!request.signal.aborted) setError(friendly(e)); }
         finally { if (!request.signal.aborted) setLoading(false); }
       }
@@ -123,27 +121,22 @@ window.__ModuleLoader__.load({
             folders.length ? folders.map((entry) => h('button', { type: 'button', className: 'dsh-ssh-folder', key: entry.path,
               onClick: () => browse(entry.path), 'aria-label': `打开文件夹 ${entry.name}` },
               h(Folder), h('span', null, entry.name), h('b', { 'aria-hidden': true }, '›'))) :
-              h('p', { className: 'dsh-ssh-muted' }, error ? '可以返回主目录或输入其他路径。' : filter ? '没有匹配的文件夹。' : '这个目录没有子文件夹，可以直接选择当前目录。')),
-        data?.truncated && h('p', { className: 'dsh-ssh-muted' }, '仅显示前 500 个文件夹。可输入完整路径前往其他目录。'),
+              h('p', { className: 'dsh-ssh-muted' }, error ? '请返回主目录后重试。' : filter ? '没有匹配的文件夹。' : '此目录没有子文件夹。')),
+        data?.truncated && h('p', { className: 'dsh-ssh-muted' }, '仅显示前 500 个文件夹。'),
         h('label', { className: 'dsh-ssh-check' }, h('input', { type: 'checkbox', checked: hidden, disabled: loading,
           onChange: (e) => { setHidden(e.target.checked); browse(data?.path ?? initialPath, e.target.checked); } }), '显示隐藏文件夹'),
-        h('details', { className: 'dsh-ssh-details' }, h('summary', null, '前往指定路径'),
-          h('form', { className: 'dsh-ssh-location', onSubmit: (e) => { e.preventDefault(); browse(location); } },
-            h('input', { 'aria-label': '远程绝对路径', value: location, onChange: (e) => setLocation(e.target.value), placeholder: '/home/demo/projects', autoComplete: 'off' }),
-            h('button', { type: 'submit', disabled: loading || !location.startsWith('/') }, '前往'))),
-        h('p', { className: 'dsh-ssh-selected' }, data ? `当前目录：${data.path}` : '连接后将显示服务器上的文件夹。'),
-        h('div', { className: 'dsh-ssh-dialog-footer' }, h('p', { className: 'dsh-ssh-muted' }, '打开文件夹浏览，选好后确认。'),
+        h('div', { className: 'dsh-ssh-dialog-footer' },
           h('button', { type: 'button', className: 'dsh-ssh-primary', disabled: loading || !data || !!error,
             onClick: () => onSelect(data.path) }, '选择此目录')));
     }
     function RemotePanel({ api, openWorkspace, subscribeWorkspaces }) {
       const [snapshot, setSnapshot] = useState({ hosts: [], mounts: [], warnings: [] });
-      const [selection, setSelection] = useState({ host: '', path: '' });
-      const { host, path } = selection;
-      const setPath = (path) => setSelection((current) => ({ ...current, path }));
+      const [selection, setSelection] = useState({ host: '', path: '', name: '' });
+      const { host, path, name } = selection;
+      const setPath = (path) => setSelection((current) => ({ ...current, path, name: '' }));
       const setHost = (next) => setSelection((current) => {
         const host = typeof next === 'function' ? next(current.host) : next;
-        return { host, path: host === current.host ? current.path : '' };
+        return host === current.host ? current : { host, path: '', name: '' };
       });
       const [picker, setPicker] = useState(false);
       const [loading, setLoading] = useState(true);
@@ -190,7 +183,7 @@ window.__ModuleLoader__.load({
         event.preventDefault();
         if (!path.startsWith('/')) { setError('请先选择远程项目目录。'); return; }
         await run('connect', async (signal) => {
-          const mount = await api('connect', { host, remote_path: path }, signal);
+          const mount = await api('connect', { host, remote_path: path, ...(name.trim() ? { name: name.trim() } : {}) }, signal);
           await refresh(signal);
           setNotice('连接成功，正在打开远程工作区…');
           await openWorkspace(mount.localDir, signal);
@@ -213,14 +206,15 @@ window.__ModuleLoader__.load({
                 h('select', { value: host, onChange: (e) => setHost(e.target.value), disabled: disabled || !snapshot.hosts.length, required: true },
                   !snapshot.hosts.length && h('option', { value: '' }, loading ? '正在读取服务器…' : '未找到 SSH 服务器'),
                   snapshot.hosts.map((entry) => h('option', { value: entry.alias, key: entry.alias }, entry.alias))),
-                h('span', { className: 'dsh-ssh-muted' }, '读取你已有的 SSH 配置')),
+                h('span', { className: 'dsh-ssh-muted' }, snapshot.hosts.find(entry => entry.alias === host)?.hostname ?? '')),
               h('div', { className: 'dsh-ssh-field' }, h('span', { id: 'dsh-ssh-directory-label' }, '远程项目目录'),
                 h('button', { type: 'button', className: 'dsh-ssh-picker', disabled: disabled || !host,
                   'aria-label': path ? `更改目录 ${path}` : '选择远程目录', onClick: () => setPicker(true), title: path },
-                  h(Folder), h('span', null, path || '选择服务器上的文件夹…')),
-                h('span', { className: 'dsh-ssh-muted' }, '浏览远程文件夹，选择项目所在目录'))),
+                  h(Folder), h('span', null, path || '选择服务器上的文件夹…')))),
+            h('label', { className: 'dsh-ssh-field dsh-ssh-name-field' }, '工作区名称',
+              h('input', { value: name, maxLength: 80, disabled, placeholder: path.split('/').filter(Boolean).pop() || '默认使用项目文件夹名称',
+                onChange: (e) => setSelection(current => ({ ...current, name: e.target.value })) })),
             h('div', { className: 'dsh-ssh-form-footer' },
-              h('p', { className: 'dsh-ssh-muted' }, '使用已配置的 SSH 密钥登录。连接后自动打开工作区。'),
               h('button', { type: 'submit', className: 'dsh-ssh-primary', disabled: disabled || !host || !path.trim() }, busy === 'connect' ? '连接并打开中…' : '连接并打开')),
             !loading && !snapshot.hosts.length && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 16 } }, '请先在 ~/.ssh/config 添加服务器，再点击刷新。'),
             snapshot.warnings.map((warning, i) => h('p', { className: 'dsh-ssh-muted', key: i }, warning))),
@@ -232,8 +226,9 @@ window.__ModuleLoader__.load({
           !snapshot.mounts.length ? h('div', { className: 'dsh-ssh-empty' }, h(Icon, { size: 30 }),
             h('strong', null, '还没有远程工作区'), h('p', { className: 'dsh-ssh-muted' }, '选择服务器和项目目录，建立第一个连接。')) :
           snapshot.mounts.map((mount) => h('article', { className: 'dsh-ssh-mount', key: mount.localDir },
-            h('div', { className: 'dsh-ssh-row' }, h('div', { className: 'dsh-ssh-host' }, h(Icon), mount.alias),
+            h('div', { className: 'dsh-ssh-row' }, h('div', { className: 'dsh-ssh-host' }, h(Icon), mount.name),
               h('span', { className: `dsh-ssh-status ${mount.status}` }, statuses[mount.status])),
+            h('p', { className: 'dsh-ssh-hostname' }, `SSH · ${mount.alias}${mount.hostname !== mount.alias ? ` · ${mount.hostname}` : ''}`),
             h('p', { className: 'dsh-ssh-path' }, mount.remoteDir),
             mount.message && h('p', { className: 'dsh-ssh-error' }, friendly(new Error(mount.message))),
             h('div', { className: 'dsh-ssh-actions' },
@@ -247,7 +242,6 @@ window.__ModuleLoader__.load({
               h('button', { disabled, onClick: () => setConfirm({ path: mount.localDir, action: 'disconnect' }) }, '断开'),
               h('button', { disabled, className: 'dsh-ssh-danger', onClick: () => setConfirm({ path: mount.localDir, action: 'remove' }) }, '移除工作区')),
             mount.checkedAt && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 10 } }, `上次检查：${new Date(mount.checkedAt).toLocaleString()}`),
-            h('details', { className: 'dsh-ssh-details' }, h('summary', null, '工作区详情'), h('p', null, mount.localDir)),
             confirm?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
               h('p', { className: 'dsh-ssh-muted' }, confirm.action === 'remove'
                 ? '将移除工作区并归档其中的会话，历史记录和远程文件会保留。已进入“未分组”的相关会话也会归档。请先结束正在运行的任务。'
@@ -258,8 +252,7 @@ window.__ModuleLoader__.load({
                   await api(action, { local_path: mount.localDir }, signal); setConfirm(null);
                   await refresh(signal); setNotice(action === 'remove' ? '工作区已移除，会话已归档，远程文件已保留。' : '已断开连接，远程文件已保留。');
                 }) }, busy === `${confirm.action}:${mount.localDir}` ? '处理中…' : confirm.action === 'remove' ? '确认移除并归档' : '确认断开'),
-                h('button', { disabled, onClick: () => setConfirm(null) }, '取消'))))),
-          h('p', { className: 'dsh-ssh-muted', style: { marginTop: 20 } }, '从这里打开的会话会使用远程目录。本地工作区仍可照常使用。')));
+                h('button', { disabled, onClick: () => setConfirm(null) }, '取消')))))));
     }
     return {
       inject: ['slots', 'layout', 'connection', 'workspaces', 'uiWorkspace'],
@@ -272,7 +265,7 @@ window.__ModuleLoader__.load({
         };
         const openWorkspace = async (localDir, signal) => {
           signal?.throwIfAborted();
-          const workspace = await ctx.workspaces.create({ path: localDir });
+          const workspace = await api('open', { local_path: localDir }, signal);
           signal?.throwIfAborted();
           await ctx.uiWorkspace.openWorkspace(workspace.workspaceId);
         };

@@ -18,6 +18,7 @@ export async function registerSshUi(ctx, host, runtime) {
     }
     browse(request, signal) { return browseRemote(runtime, request, signal); }
     connect(request, signal) { return runtime.workspaceActions.connect(request, signal); }
+    open(request, signal) { return runtime.workspaceActions.open(request.local_path, signal); }
     check(request, signal) { return runtime.workspaceActions.check(request.local_path, signal); }
     disconnect(request) { return runtime.workspaceActions.disconnect(request.local_path); }
     remove(request) {
@@ -26,7 +27,8 @@ export async function registerSshUi(ctx, host, runtime) {
     }
   }
   new SshRemoteUi(ctx);
-  const mount = z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(),
+  const label = { name: z.string(), hostname: z.string(), title: z.string() };
+  const mount = z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(),
     status: z.enum(['saved', 'connected', 'error']), checkedAt: z.string().nullable(), message: z.string() });
   const pathRequest = z.object({ local_path: z.string().min(1).max(8192) }).strict();
   const definitions = {
@@ -36,8 +38,9 @@ export async function registerSshUi(ctx, host, runtime) {
         directories: z.array(z.object({ name: z.string(), path: z.string(), hidden: z.boolean() })) }) },
     list: { result: z.object({ hosts: z.array(z.object({ alias: z.string(), hostname: z.string(),
       user: z.string(), port: z.number() })), mounts: z.array(mount), warnings: z.array(z.string()) }) },
-    connect: { request: z.object({ host: z.string().min(1).max(512), remote_path: z.string().min(1).max(8192) }).strict(),
-      cancel: true, result: z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(), banner: z.string() }) },
+    connect: { request: z.object({ host: z.string().min(1).max(512), remote_path: z.string().min(1).max(8192), name: z.string().max(80).optional() }).strict(),
+      cancel: true, result: z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(), banner: z.string() }) },
+    open: { request: pathRequest, result: z.object({ workspaceId: z.string() }) },
     check: { request: pathRequest, cancel: true, result: mount },
     disconnect: { request: pathRequest, result: z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(), closed: z.boolean() }) },
     remove: { request: pathRequest, result: z.object({ removed: z.literal(true), localDir: z.string(), archivedSessionIds: z.array(z.string()) }) },

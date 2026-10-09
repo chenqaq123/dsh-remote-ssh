@@ -117,6 +117,19 @@ try {
     assert.equal(await ready.fs.readText(localTarget), 'local content\n');
     assert.ok(ready.shell.resolve({ command: 'pwd', workdir: localWorkspace }).localRequest);
   });
+  await test('upgrades existing remote names when the workspace service becomes ready', async () => {
+    let title;
+    let changed;
+    const renamed = new Promise(resolve => { changed = resolve; });
+    const workspace = { id: 'test-remote', path: join(scratch, 'remote-mirror'), title: 'remote-mirror',
+      async setTitle(value) { this.title = value; title = value; changed(); } };
+    ready.provide('workspaceRegistry', { list: () => [workspace] });
+    let timer;
+    try {
+      await Promise.race([renamed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('name migration did not start')), 2000); })]);
+      assert.equal(title, 'remote-project · SSH example.invalid');
+    } finally { clearTimeout(timer); }
+  });
 } finally {
   for (const fiber of fibers) await fiber.dispose();
   rmSync(scratch, { recursive: true, force: true });
