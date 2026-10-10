@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MountTable } from '../lib/mounts.js';
@@ -168,4 +168,15 @@ test('opening a disconnected or busy workspace cannot recreate its native regist
   f.runtime.workspaceBusy.clear(); f.mounts.remove(mount.localDir);
   await assert.rejects(() => f.actions.open(mount.localDir), /已断开/);
   assert.equal(f.registry.list().length, 0);
+});
+
+test('new mappings reject registered empty local workspaces and symbolic link placeholders', async t => {
+  const f = fixture(t); const local = join(f.scratch, 'local-project'); mkdirSync(local);
+  await f.registry.create(local); let probes = 0;
+  f.runtime.runner.hello = async () => { probes++; return ''; };
+  await assert.rejects(() => f.actions.connect({ host: 'dev', remote_path: '/project', local_path: local }), /本地工作区/);
+  await assert.rejects(() => f.actions.connect({ host: 'dev', remote_path: '/project', local_path: join(local, 'nested') }), /本地工作区/);
+  const empty = join(f.scratch, 'empty'), link = join(f.scratch, 'alias'); mkdirSync(empty); symlinkSync(empty, link);
+  await assert.rejects(() => f.actions.connect({ host: 'dev', remote_path: '/project', local_path: link }), /符号链接/);
+  assert.equal(probes, 0);
 });

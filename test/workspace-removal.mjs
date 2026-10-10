@@ -57,6 +57,29 @@ test('previously disconnected workspace registrations can still be removed from 
   assert.equal(f.events.some(([kind]) => kind === 'close'), false);
 });
 
+test('removed config declarations still archive sessions and retire the placeholder on native deletion', async t => {
+  const f = fixture(t);
+  f.runtime.mounts.put({ ...f.runtime.mounts.list()[0], source: 'config' }); f.runtime.mounts.save();
+  f.runtime.mounts = new MountTable({ storageFile: f.runtime.mounts.storageFile }).load();
+  assert.equal(f.runtime.mounts.list().length, 0);
+  await f.registry.delete('remote-workspace');
+  assert.ok(f.archived.has('remote-chat')); assert.ok(f.archived.has('old-ungrouped'));
+  assert.equal(f.runtime.mounts.configuredMounts.size, 0);
+  assert.ok(f.runtime.mounts.retiredRoots.has(f.localDir));
+});
+
+test('failed inactive config removal restores metadata without activating its route', async t => {
+  const f = fixture(t);
+  f.runtime.mounts.put({ ...f.runtime.mounts.list()[0], source: 'config' }); f.runtime.mounts.save();
+  f.runtime.mounts = new MountTable({ storageFile: f.runtime.mounts.storageFile }).load();
+  const save = f.runtime.mounts.save.bind(f.runtime.mounts); let fail = true;
+  f.runtime.mounts.save = () => { if (fail) { fail = false; throw new Error('disk full'); } save(); };
+  await assert.rejects(() => f.runtime.removeWorkspace(f.localDir), /disk full/);
+  assert.equal(f.runtime.mounts.list().length, 0); assert.ok(f.runtime.mounts.configuredMounts.has(f.localDir));
+  assert.ok(!f.runtime.mounts.retiredRoots.has(f.localDir));
+  assert.deepEqual([...f.archived], ['already-archived']); assert.ok(f.pins.has('remote-chat'));
+});
+
 test('local deletion is unchanged and plugin unload restores the native method', async t => {
   const f = fixture(t);
   await f.registry.delete('local-workspace'); assert.equal(f.archived.has('local-chat'), false);

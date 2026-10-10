@@ -36,6 +36,13 @@ const fiber = ctx.plugin(WorkspaceRegistry); await fiber.await();
 let dispose;
 try {
   const registry = ctx.workspaceRegistry;
+  const absentPath = join(scratch, 'configured', 'missing');
+  const configured = new MountTable({ storageFile: join(scratch, 'configured.json') });
+  configured.put({ localDir: absentPath, alias: 'config.invalid', remoteDir: '/configured', source: 'config' });
+  const configActions = createWorkspaceActions({ ctx, mounts: configured, config: {} });
+  const fromConfig = await configActions.open(absentPath);
+  assert.equal(registry.get(fromConfig.workspaceId).path, absentPath);
+  await registry.delete(fromConfig.workspaceId);
   const remote = await registry.create(remotePath), local = await registry.create(localPath);
   await remote.attachSession('remote-chat'); await local.attachSession('local-chat');
   const mounts = new MountTable({ storageFile: join(scratch, 'mounts.json') });

@@ -22,7 +22,7 @@
 #   49 io error               -> FS_IO_ERROR
 #   50 not observed           -> FS_NOT_OBSERVED
 #
-# Requires only POSIX sh plus stat/printf/cat/mv/mkdir/chmod/dirname. Bash is not
+# Requires POSIX sh plus stat/printf/cat/mv/mkdir/chmod/readlink/mktemp. Bash is not
 # required, and no state is kept between invocations.
 
 set -u
@@ -32,6 +32,27 @@ LC_ALL=C
 export LC_ALL
 
 decode() { printf '%b' "$1"; }
+
+valid_cap() {
+	case "$1" in -1) return 0 ;; ''|*[!0-9]*) return 1 ;; esac
+	# Also reject values outside the shell's integer range.
+	[ "$1" -ge 0 ] 2>/dev/null
+}
+
+# mkdir failures are not all permission failures (a file ancestor is ENOTDIR,
+# an unwritable ancestor is EACCES, disk and other failures are I/O errors).
+ensure_parent() {
+	if mkdir -p "$1" 2>/dev/null; then return; fi
+	ancestor=$1
+	while [ ! -e "$ancestor" ] && [ ! -L "$ancestor" ]; do
+		next=${ancestor%/*}; [ -n "$next" ] || next=/
+		[ "$next" != "$ancestor" ] || exit 49
+		ancestor=$next
+	done
+	[ -d "$ancestor" ] || exit 42
+	[ -w "$ancestor" ] && [ -x "$ancestor" ] || exit 43
+	exit 49
+}
 
 op=$1
 shift
@@ -146,6 +167,7 @@ read)
 	p=${p%.}
 	cap=$(decode "$2"; printf '.')
 	cap=${cap%.}
+	valid_cap "$cap" || exit 49
 	if ! probe_fields "$p" 1; then exit 41; fi
 	[ "$PF_TYPE" = f ] || exit 44
 	if [ "$cap" != "-1" ] && [ "$PF_SIZE" -gt "$cap" ]; then exit 45; fi
@@ -162,6 +184,8 @@ readrange)
 	off=${off%.}
 	len=$(decode "$3"; printf '.')
 	len=${len%.}
+	case "$off:$len" in *[!0-9:]*|:*|*:) exit 49 ;; esac
+	[ "$off" -ge 0 ] 2>/dev/null && [ "$len" -ge 0 ] 2>/dev/null || exit 49
 	if ! probe_fields "$p" 1; then exit 41; fi
 	[ "$PF_TYPE" = f ] || exit 44
 	printf '#V %s %s %s\n' "$PF_VERSION" "$PF_SIZE" "$PF_TYPE"
@@ -193,7 +217,7 @@ list)
 # write <path> <mode|-> <expectedVersion|-> <any|must-exist|must-absent> <diffCap|-1>
 # New content arrives on stdin. Publishes atomically through a sibling temp file
 # and rename(2). Header: "#W <existed 0|1> <version> <type> <oldBytes>" followed
-# by the previous content when it was captured for the diff basis.
+# by the previous content when captured; oldBytes=-1 means no diff basis.
 write)
 	target=$(decode "$1"; printf '.')
 	target=${target%.}
@@ -205,11 +229,28 @@ write)
 	policy=${policy%.}
 	cap=$(decode "$5"; printf '.')
 	cap=${cap%.}
+	valid_cap "$cap" || exit 49
+	case "$policy" in any|must-exist|must-absent) ;; *) exit 49 ;; esac
+	case "$target" in /*) ;; *) exit 49 ;; esac
 
-	target_dir=$(dirname "$target")
-	mkdir -p "$target_dir" 2>/dev/null || exit 43
+	# Write through final symlinks and canonicalize parent symlinks, then publish
+	# beside the referent. Keep literal trailing newlines in paths/readlink output.
+	links=0
+	while :; do
+		target_dir=${target%/*}; [ -n "$target_dir" ] || target_dir=/
+		leaf=${target##*/}
+		ensure_parent "$target_dir"
+		target_dir=$(CDPATH= cd -P "$target_dir" && pwd -P && printf '.') || exit 49
+		target_dir=${target_dir%.}; target_dir=${target_dir%?}
+		target=${target_dir%/}/$leaf
+		[ -L "$target" ] || break
+		links=$((links + 1)); [ "$links" -le 40 ] || exit 49
+		link=$(readlink -n "$target" && printf '.') || exit 49
+		link=${link%.}
+		case "$link" in /*) target=$link ;; *) target=${target_dir%/}/$link ;; esac
+	done
 
-	if probe_fields "$target" 0; then
+	if probe_fields "$target" 1; then
 		existed=1
 		cur_version=$PF_VERSION
 		cur_type=$PF_TYPE
@@ -222,7 +263,8 @@ write)
 		cur_size=0
 		cur_mode=-
 	fi
-	if [ "$existed" = 1 ] && [ "$cur_type" = d ]; then exit 44; fi
+	if [ "$existed" = 1 ] && [ "$cur_type" != f ]; then exit 44; fi
+	[ -w "$target_dir" ] && [ -x "$target_dir" ] || exit 43
 
 	case "$policy" in
 	must-exist)
@@ -234,22 +276,22 @@ write)
 	esac
 	if [ "$expected" != "-" ] && [ "$expected" != "$cur_version" ]; then exit 48; fi
 
-	old_bytes=0
+	old_bytes=-1
 	new_tmp=
 	old_tmp=
 	trap 'rm -f -- "$new_tmp" "$old_tmp"' 0
 	trap 'exit 49' 1 2 15
 	old_tmp=
 	if [ "$existed" = 1 ] && [ "$cur_type" = f ] && [ "$cap" != "-1" ] && [ "$cur_size" -lt "$cap" ]; then
-		old_tmp=$(mktemp "$target_dir/.dsh-old-XXXXXX") || exit 43
+		old_tmp=$(mktemp "$target_dir/.dsh-old-XXXXXX") || exit 49
 		if cp "$target" "$old_tmp" 2>/dev/null; then
 			old_bytes=$cur_size
 		else
-			old_bytes=0
+			old_bytes=-1
 		fi
 	fi
 
-	new_tmp=$(mktemp "$target_dir/.dsh-new-XXXXXX") || exit 43
+	new_tmp=$(mktemp "$target_dir/.dsh-new-XXXXXX") || exit 49
 	if ! cat >"$new_tmp"; then
 		rm -f "$new_tmp"
 		exit 49
@@ -257,12 +299,19 @@ write)
 
 	if [ "$mode" = "-" ]; then mode=$cur_mode; fi
 	if [ "$mode" != "-" ]; then chmod "$mode" "$new_tmp" 2>/dev/null || true; fi
+	# A slow upload must not publish over an intervening guarded write.
+	if probe_fields "$target" 1; then latest=$PF_VERSION; else latest=-; fi
+	case "$policy" in
+	must-absent) [ "$latest" = - ] || exit 50 ;;
+	must-exist) [ "$latest" != - ] || exit 48 ;;
+	esac
+	if [ "$expected" != - ] && [ "$latest" != "$expected" ]; then exit 48; fi
 	if ! mv -f "$new_tmp" "$target"; then
 		rm -f "$new_tmp"
 		exit 49
 	fi
 
-	if probe_fields "$target" 0; then
+	if probe_fields "$target" 1; then
 		new_version=$PF_VERSION
 		new_type=$PF_TYPE
 	else

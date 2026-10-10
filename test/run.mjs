@@ -373,15 +373,15 @@ test('remoteContains respects segment boundaries', () => {
 });
 
 test('routes by cwd, maps absolute local paths, and treats foreign absolutes as remote', () => {
-  const table = new MountTable({ storageFile: join(sandbox, 'mounts.json'), resolveHost: () => ({}) });
+  const table = new MountTable({ storageFile: join(sandbox, 'mounts.json') });
   table.put({ localDir: '/local/proj', alias: 'h', remoteDir: '/remote/proj' });
-  const mount = table.route('/local/proj');
+  const mount = table.match('/local/proj');
   assert.equal(mount.alias, 'h');
   assert.equal(table.toRemote(mount, 'src/a.ts', '/local/proj'), '/remote/proj/src/a.ts');
   assert.equal(table.toRemote(mount, '/local/proj/src/a.ts', undefined), '/remote/proj/src/a.ts');
   assert.equal(table.toRemote(mount, '/etc/hosts', undefined), '/etc/hosts');
-  assert.equal(table.route('/local/proj/sub').remoteDir, '/remote/proj');
-  assert.equal(table.route('/somewhere/else'), undefined);
+  assert.equal(table.match('/local/proj/sub').remoteDir, '/remote/proj');
+  assert.equal(table.match('/somewhere/else'), undefined);
 });
 
 test('persists and reloads mounts', () => {

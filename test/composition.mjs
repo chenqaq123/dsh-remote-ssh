@@ -94,7 +94,7 @@ const mirror = join(scratch, 'mirrors', 'remote');
 console.log('registration');
 await test('registers ctx.fs and ctx.shell as this plugin\'s backends', () => {
   assert.equal(typeof ctx.fs?.readText, 'function');
-  assert.equal(ctx.fs.sandboxMode, undefined);
+  assert.equal(ctx.fs.sandboxMode, 'workspace-write');
   assert.equal(typeof ctx.shell?.execute, 'function');
 });
 

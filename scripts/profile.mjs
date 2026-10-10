@@ -13,6 +13,7 @@ const managed = /^# >>> dsh-ssh-remote[^\n]*\n[\s\S]*?^# <<< dsh-ssh-remote <<<[
 
 export function updateProfile(action, profile = 'desktop', base = process.env.DSH_HOME ?? join(homedir(), '.dsh'), pluginDir = source) {
   if (!['install', 'uninstall'].includes(action)) throw new Error('Usage: dsh-ssh-remote <install|uninstall> [profile]');
+  if (action === 'install' && process.platform === 'win32') throw new Error('This plugin currently supports macOS and Linux; Windows/Pwsh is not supported.');
   if (!/^[\w.-]+$/u.test(profile) || profile === '.' || profile === '..') throw new Error('Invalid profile name');
   const dir = join(base, 'profiles', profile);
   if (!existsSync(dir)) throw new Error(`Profile does not exist: ${dir}. Open Harness once before installing.`);

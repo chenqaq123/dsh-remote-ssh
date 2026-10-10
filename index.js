@@ -18,14 +18,15 @@
 import { join } from 'node:path';
 import { createSshFileSystem } from './lib/fs-remote.js';
 import { loadHostModules } from './lib/host-modules.js';
-import { MountTable } from './lib/mounts.js';
+import { MountTable, normalizeLocal, normalizeRemote } from './lib/mounts.js';
 import { defaultConfigPaths, describeHost, expandHome, listHosts, parseSshConfig } from './lib/ssh-config.js';
 import { SshRunner, targetFor } from './lib/ssh-runner.js';
 import { createSshShellExecutor } from './lib/shell-remote.js';
 import { dshHome, registerTools } from './lib/tools.js';
-import { createWorkspaceActions } from './lib/workspace-actions.js';
+import { assertPlaceholderPath, createWorkspaceActions } from './lib/workspace-actions.js';
 import { registerSshUi } from './ui/host.js';
 import { installWorkspaceRemoval } from './lib/workspace-removal.js';
+import { validateHost } from './lib/browse.js';
 
 /** Load the harness seam classes once, before the plugin is instantiated. */
 const host = await loadHostModules();
@@ -84,20 +85,15 @@ function asPositiveInt(value, fallback, key) {
  * @returns the resolved configuration.
  */
 export function resolveConfig(raw) {
-  const config = { ...defaults(), ...(raw ?? {}) };
-  config.connectTimeoutSec = asPositiveInt(config.connectTimeoutSec, 10, 'connectTimeoutSec');
-  config.controlPersistSec = asPositiveInt(config.controlPersistSec, 600, 'controlPersistSec');
-  config.operationTimeoutMs = asPositiveInt(config.operationTimeoutMs, 60_000, 'operationTimeoutMs');
-  config.watchIntervalMs = asPositiveInt(config.watchIntervalMs, 3_000, 'watchIntervalMs');
-  config.diffBasisMaxBytes = asPositiveInt(config.diffBasisMaxBytes, 10 * 1024 * 1024, 'diffBasisMaxBytes');
-  config.timeoutMs = asPositiveInt(config.timeoutMs, 120_000, 'timeoutMs');
-  config.maxTimeoutMs = asPositiveInt(config.maxTimeoutMs, 600_000, 'maxTimeoutMs');
-  config.maxOutputBytes = asPositiveInt(config.maxOutputBytes, 64_000, 'maxOutputBytes');
-  config.maxSpillBytes = asPositiveInt(config.maxSpillBytes, 64 * 1024 * 1024, 'maxSpillBytes');
-  config.batchMode = asBoolean(config.batchMode, true, 'batchMode');
-  config.multiplex = asBoolean(config.multiplex, true, 'multiplex');
-  config.localFallback = asBoolean(config.localFallback, true, 'localFallback');
-  config.confineMutations = asBoolean(config.confineMutations, true, 'confineMutations');
+  const fallback = defaults();
+  const config = { ...fallback, ...(raw ?? {}) };
+  for (const key of ['connectTimeoutSec', 'controlPersistSec', 'operationTimeoutMs', 'watchIntervalMs',
+    'diffBasisMaxBytes', 'timeoutMs', 'maxTimeoutMs', 'maxOutputBytes', 'maxSpillBytes']) {
+    config[key] = asPositiveInt(config[key], fallback[key], key);
+  }
+  for (const key of ['batchMode', 'multiplex', 'localFallback', 'confineMutations']) {
+    config[key] = asBoolean(config[key], fallback[key], key);
+  }
   if (typeof config.sshBinary !== 'string' || config.sshBinary.length === 0) {
     throw new Error('ssh-remote: config.sshBinary must be a non-empty string');
   }
@@ -111,9 +107,20 @@ export function resolveConfig(raw) {
     throw new Error('ssh-remote: config.sshConfigPaths must be an array of paths');
   }
   if (config.sshConfigPaths?.length > 1) throw new Error('Use one sshConfigPaths file with OpenSSH Include directives');
+  for (const key of ['sshConfigPaths', 'hosts', 'extraSshArgs', 'extraWritableRoots']) {
+    if ((config[key] ?? []).some(value => typeof value !== 'string' || !value.length || value.includes('\0'))) {
+      throw new Error(`ssh-remote: config.${key} must contain non-empty strings`);
+    }
+  }
+  for (const key of ['mirrorRoot', 'storageFile']) {
+    if (typeof config[key] !== 'string') throw new Error(`ssh-remote: config.${key} must be an absolute path`);
+    config[key] = normalizeLocal(expandHome(config[key]));
+  }
+  config.extraWritableRoots = config.extraWritableRoots.map(root => {
+    if (!root.startsWith('/')) throw new Error('ssh-remote: extraWritableRoots must be remote absolute paths');
+    return normalizeRemote(root);
+  });
   if (config.sshConfigPaths) config.sshConfigPaths = config.sshConfigPaths.map((path) => expandHome(path));
-  config.mirrorRoot = expandHome(String(config.mirrorRoot));
-  config.storageFile = expandHome(String(config.storageFile));
   return config;
 }
 
@@ -123,6 +130,7 @@ export function resolveConfig(raw) {
  * @param rawConfig - deployment configuration.
  */
 export function apply(ctx, rawConfig) {
+  if (process.platform === 'win32') throw new Error('ssh-remote currently supports macOS and Linux; Windows/Pwsh routing is not implemented');
   const config = resolveConfig(rawConfig);
   const configPaths = config.sshConfigPaths ?? defaultConfigPaths();
   const blocks = parseSshConfig(configPaths).blocks;
@@ -139,7 +147,7 @@ export function apply(ctx, rawConfig) {
   };
 
   const runner = new SshRunner(config);
-  const mounts = new MountTable({ storageFile: config.storageFile, resolveHost: resolveTarget }).load();
+  const mounts = new MountTable({ storageFile: config.storageFile }).load();
 
   const runtime = {
     ctx,
@@ -180,23 +188,27 @@ export function apply(ctx, rawConfig) {
   // Deployment-declared mounts are applied at boot unless explicitly retired;
   // runtime mounts persist separately so a tool-driven mount survives a reload.
   for (const entry of config.mounts) {
-    const alias = String(entry.host ?? entry.alias ?? '');
-    const remoteDir = String(entry.remoteDir ?? entry.remote_dir ?? '');
+    const alias = typeof (entry?.host ?? entry?.alias) === 'string' ? (entry.host ?? entry.alias) : '';
+    const rawDir = entry?.remoteDir ?? entry?.remote_dir;
+    const remoteDir = typeof rawDir === 'string' ? rawDir : '';
     if (alias.length === 0 || !remoteDir.startsWith('/')) {
       ctx.logger?.warn?.('ssh-remote: ignoring malformed config.mounts entry %o', entry);
       continue;
     }
-    const localDir = entry.localDir ?? entry.local_dir;
-    const mountRoot = localDir === undefined
-      ? join(config.mirrorRoot, alias.replace(/[^\w.-]+/gu, '_'), remoteDir.replace(/^\/+/u, '').replace(/[^\w.-]+/gu, '_'))
-      : expandHome(String(localDir));
-    // A user-removed configured mount must stay removed across restarts.
-    if (mounts.retiredRoots.has(mountRoot)) continue;
-    mounts.put({
-      localDir: mountRoot,
-      alias,
-      remoteDir,
-    });
+    try {
+      validateHost(alias);
+      const localDir = entry.localDir ?? entry.local_dir;
+      const mountRoot = normalizeLocal(localDir === undefined
+        ? join(config.mirrorRoot, alias.replace(/[^\w.-]+/gu, '_'), remoteDir.replace(/^\/+/u, '').replace(/[^\w.-]+/gu, '_') || 'root')
+        : expandHome(localDir));
+      if (mounts.retiredRoots.has(mountRoot)) continue;
+      const previous = mounts.mounts.get(mountRoot) ?? mounts.configuredMounts.get(mountRoot);
+      if (previous && (previous.alias !== alias || previous.remoteDir !== normalizeRemote(remoteDir))) {
+        throw new Error('local placeholder already belongs to another remote directory');
+      }
+      assertPlaceholderPath(mountRoot, { managed: !!previous, workspaces: ctx.get('workspaceRegistry')?.list() ?? [] });
+      mounts.put({ ...previous, localDir: mountRoot, alias, remoteDir, source: 'config' });
+    } catch (error) { ctx.logger?.warn?.('ssh-remote: ignoring malformed config.mounts entry: %s', error.message); }
   }
 
   const listing = listHosts({ paths: configPaths, extraHosts: config.hosts });
@@ -211,10 +223,12 @@ export function apply(ctx, rawConfig) {
   const SshFileSystem = createSshFileSystem(host, runtime);
   const SshShellExecutor = createSshShellExecutor(host, runtime);
 
-  new SshFileSystem(ctx, config);
-  new SshShellExecutor(ctx, config);
+  new SshFileSystem(ctx);
+  new SshShellExecutor(ctx);
   runtime.workspaceActions = createWorkspaceActions(runtime);
-  ctx.inject(['workspaceRegistry'], () => runtime.workspaceActions.syncTitles());
+  ctx.inject(['workspaceRegistry'], () => {
+    void runtime.workspaceActions.syncTitles().catch(error => ctx.logger?.warn?.('ssh-remote: title sync failed: %s', error.message));
+  });
   ctx.inject(['workspaceRegistry', 'sessionPersistence'], (scope) => {
     scope.effect(() => installWorkspaceRemoval(scope, runtime));
   });
