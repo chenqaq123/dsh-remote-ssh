@@ -116,6 +116,22 @@ async function main(){
   await page.waitForFunction(()=>window.calls.some(call=>call.method==='forgetPassword'));
   await page.getByText('已保存这台服务器的密码，连接时会自动使用。',{exact:true}).waitFor({state:'detached'});
   assert.equal(await page.getByRole('combobox').evaluate(el=>el.selectedOptions[0].textContent),'cgx30');
+  // The directory picker reports a password-protected host inline, retries with
+  // the password it collects, and the host remembers it for the connect below.
+  await page.evaluate(()=>{window.needPasswordBrowse=true});
+  await page.getByRole('button',{name:/^(选择远程目录|更改目录)/}).click();
+  await dialog.getByRole('alert').filter({hasText:'需要密码认证'}).waitFor();
+  const pickerPassword=dialog.getByLabel(/密码（cgx30）/);
+  await pickerPassword.fill('browse-secret');
+  await button('保存密码并重试',dialog).click();
+  await dialog.getByText('此目录没有子文件夹。',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='browse'&&c.request.password==='browse-secret')),true,'the picker resubmits the inline password');
+  await button('选择此目录',dialog).click();await dialog.waitFor({state:'detached'});
+  await page.waitForFunction(()=>[...document.querySelectorAll('option')].some(o=>o.textContent==='cgx30 · 密码已保存'));
+  await page.evaluate(()=>{window.needPasswordBrowse=false});
+  await button('清除密码').click();
+  await page.waitForFunction(()=>document.querySelector('select')?.selectedOptions[0]?.textContent==='cgx30');
+  assert.equal(await page.getByRole('combobox').evaluate(el=>el.selectedOptions[0].textContent),'cgx30');
   await page.setViewportSize({width:420,height:900});await page.getByRole('button',{name:/^更改目录/}).click();await dialog.getByText('此目录没有子文件夹。',{exact:true}).waitFor();
   assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth),true);await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>!!document.activeElement.closest('dialog')),true);
   mkdirSync(path.join(root,'test/artifacts'),{recursive:true});await page.screenshot({path:path.join(root,'test/artifacts/narrow-dark.png')});

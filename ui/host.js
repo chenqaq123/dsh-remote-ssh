@@ -40,7 +40,7 @@ export async function registerSshUi(ctx, host, runtime) {
   const checkRequest = z.object({ local_path: z.string().min(1).max(8192), password: password.optional() }).strict();
   const definitions = {
     browse: { request: z.object({ host: z.string().min(1).max(512), path: z.string().max(8192).optional(),
-      show_hidden: z.boolean().optional() }).strict(), cancel: true,
+      show_hidden: z.boolean().optional(), password: password.optional() }).strict(), cancel: true,
       result: z.object({ path: z.string(), parent: z.string().nullable(), truncated: z.boolean(),
         directories: z.array(z.object({ name: z.string(), path: z.string(), hidden: z.boolean() })) }) },
     list: { result: z.object({ hosts: z.array(z.object({ alias: z.string(), hostname: z.string(),

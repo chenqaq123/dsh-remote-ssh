@@ -67,6 +67,7 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page .dsh-ssh-inline:hover:not(:disabled){background:transparent;opacity:1}
       .dsh-ssh-page input[type=password].dsh-ssh-needed{border-color:#c34c4c}
       .dsh-ssh-dialog-footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
+      .dsh-ssh-picker-password{display:flex;gap:8px;align-items:center}.dsh-ssh-picker-password input{flex:1;min-width:0}
       @media(max-width:650px){.dsh-ssh-page{padding-left:18px;padding-right:18px}.dsh-ssh-grid{grid-template-columns:1fr}.dsh-ssh-card{padding:18px}.dsh-ssh-form-footer{align-items:flex-start;flex-direction:column}.dsh-ssh-form-footer button{width:100%}.dsh-ssh-header{align-items:flex-start}.dsh-ssh-row{gap:8px}}
     `;
     /** The native workspace row has no title slot; decorate only its label span. */
@@ -166,7 +167,7 @@ window.__ModuleLoader__.load({
       return h('svg', { width: 19, height: 19, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
         strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z' }));
     }
-    function DirectoryPicker({ api, host, initialPath, onSelect, onClose }) {
+    function DirectoryPicker({ api, host, initialPath, initialPassword = '', onSelect, onClose }) {
       const dialog = useRef(null);
       const controller = useRef(null);
       const [data, setData] = useState(null);
@@ -174,21 +175,32 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('');
       const [hidden, setHidden] = useState(false);
       const [filter, setFilter] = useState('');
-      async function browse(path, showHidden = hidden) {
+      // Password entered in the connect form, or later inline below: every browse
+      // attempt resubmits it, and the host remembers it once a listing succeeds.
+      const [attempt, setAttempt] = useState(initialPassword);
+      const [draft, setDraft] = useState(initialPassword);
+      const [askPassword, setAskPassword] = useState(false);
+      async function browse(path, showHidden = hidden, password = attempt) {
         controller.current?.abort();
         const request = new AbortController();
         controller.current = request;
         setLoading(true); setError(''); setFilter('');
         try {
-          const next = await api('browse', { host, path, show_hidden: showHidden }, request.signal);
+          const next = await api('browse', { host, path, show_hidden: showHidden,
+            ...(password ? { password } : {}) }, request.signal);
           if (request.signal.aborted) return;
+          setAskPassword(false);
           setData(next);
-        } catch (e) { if (!request.signal.aborted) setError(friendly(e)); }
+        } catch (e) {
+          if (request.signal.aborted) return;
+          setError(friendly(e));
+          if (needsPassword(e)) { setAskPassword(true); setDraft(password); }
+        }
         finally { if (!request.signal.aborted) setLoading(false); }
       }
       useEffect(() => {
         dialog.current.showModal();
-        browse(initialPath);
+        browse(initialPath, hidden, initialPassword);
         return () => controller.current?.abort();
       }, []);
       const crumbs = data?.path.split('/').filter(Boolean) ?? [];
@@ -210,6 +222,12 @@ window.__ModuleLoader__.load({
         h('input', { 'aria-label': '筛选当前目录', placeholder: '筛选文件夹…', value: filter, disabled: loading || !data,
           onChange: (e) => setFilter(e.target.value) }),
         error && h('p', { className: 'dsh-ssh-error', role: 'alert', style: { marginTop: 12 } }, error),
+        askPassword && h('form', { className: 'dsh-ssh-picker-password', style: { marginTop: 12 },
+            onSubmit: (e) => { e.preventDefault(); setAttempt(draft); browse(data?.path ?? initialPath, hidden, draft); } },
+          h('input', { type: 'password', value: draft, autoFocus: true, autoComplete: 'new-password',
+            'aria-label': `密码（${host}）`, placeholder: '输入这台服务器的密码后重试',
+            onChange: (e) => setDraft(e.target.value) }),
+          h('button', { type: 'submit', className: 'dsh-ssh-primary', disabled: loading || !draft }, '保存密码并重试')),
         h('div', { className: 'dsh-ssh-folders', 'aria-busy': loading },
           loading ? h('p', { className: 'dsh-ssh-muted', role: 'status' }, '正在读取远程目录…') :
             folders.length ? folders.map((entry) => h('button', { type: 'button', className: 'dsh-ssh-folder', key: entry.path,
@@ -344,8 +362,9 @@ window.__ModuleLoader__.load({
             h('p', { className: 'dsh-ssh-muted', style: { marginTop: 16 } },
               '密码只保存在本机（默认 ~/.dsh/ssh-remote/secrets.json，仅当前用户可读写），用于自动登录，可随时清除。'),
             snapshot.warnings.map((warning, i) => h('p', { className: 'dsh-ssh-muted', key: i }, warning))),
-          picker && h(DirectoryPicker, { api, host, initialPath: path, onClose: () => setPicker(false),
-            onSelect: (next) => { setPath(next); setPicker(false); } }),
+          picker && h(DirectoryPicker, { api, host, initialPath: path, initialPassword: password,
+            onClose: () => { setPicker(false); refresh(lifetime.current.signal).catch(() => {}); },
+            onSelect: (next) => { setPath(next); setPicker(false); refresh(lifetime.current.signal).catch(() => {}); } }),
           h('div', { className: 'dsh-ssh-section-title' }, h('h2', null, '已保存的远程工作区',
             h('span', { className: 'dsh-ssh-count' }, snapshot.mounts.length))),
           loading ? h('div', { className: 'dsh-ssh-empty', role: 'status' }, '正在读取工作区…') :

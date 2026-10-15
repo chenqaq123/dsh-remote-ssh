@@ -10,7 +10,7 @@ const folderIcon=()=>h('svg',{width:16,height:16,viewBox:'0 0 24 24',fill:'none'
 const primitives=new Proxy({Tooltip:({children})=>children,HoverCard:({anchor})=>anchor,Menu:({anchor})=>anchor},{get(target,key){return target[key]||folderIcon}});
 const native=window.nativeWorkspaceBundle?.factory(name=>({'react':React,'react/jsx-runtime':{jsx:(type,props,key)=>h(type,{...props,key}),jsxs:(type,props,key)=>h(type,{...props,key}),Fragment:React.Fragment},'@deepseek-ai/cordis':{Service:class{}},'@deepseek-ai/dsh-client-store':{},'@deepseek-ai/dsh-client-ui-primitives':primitives})[name]);
 const NativeRow=native?.PreviewProjectRow||function({group,onToggle}){return h('div',{'data-row-key':'workspace:'+group.key,className:'workspace',onClick:onToggle,role:'treeitem'},h('span',null,h(folderIcon)),h('span',{style:{display:'none'}}),h('span',{style:{flex:1,minWidth:0}},h('span',{className:'native-title'},group.label)),h('span'))};
-window.calls=[];window.failConnect=false;window.delayConnect=false;window.noHosts=false;window.needPassword=false;
+window.calls=[];window.failConnect=false;window.delayConnect=false;window.noHosts=false;window.needPassword=false;window.needPasswordBrowse=false;
 window.workspaceListeners=new Set();window.archivedSessionIds=[];
 window.mounts=[{name:'lingbo',hostname:'cgx190',alias:'cgx190',title:'lingbo · cgx190',workspaceId:'demo-workspace',remoteDir:'/home/demo/projects/sample-project',localDir:'/demo/workspaces/sample-project',status:'saved',checkedAt:null,message:''}];
 window.hosts=[{alias:'cgx190',hostname:'192.0.2.190',hasPassword:false},{alias:'cgx30',hostname:'192.0.2.30',hasPassword:false}];
@@ -29,6 +29,8 @@ const ctx={
   if(method==='browse'){
    await delay(window.slowBrowse?1500:60,signal);
    if(window.failBrowse)return {ok:false,error:{message:'Permission denied (publickey)'}};
+   if(window.needPasswordBrowse&&!request.password)return {ok:false,error:{message:'服务器 '+request.host+' 需要密码认证。请在「密码」中填写密码并重试，密码会保存在本机，之后无需再次输入。 [ssh-password-required]'}};
+   if(request.password)window.hosts=window.hosts.map(host=>host.alias===request.host?{...host,hasPassword:true}:host);
    const path=request.path||'/home/demo';
    if(path==='/missing'||window.missingBrowse)return {ok:false,error:{message:'目录不存在或已被移走，请返回上级目录。'}};
    return {ok:true,value:{path,parent:path==='/'?null:path.slice(0,path.lastIndexOf('/'))||'/',truncated:false,directories:(folders[path]||[]).filter(n=>request.show_hidden||!n.startsWith('.')).map(name=>({name,path:(path==='/'?'':path)+'/'+name,hidden:name.startsWith('.')}))}};

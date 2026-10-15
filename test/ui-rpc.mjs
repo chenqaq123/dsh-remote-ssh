@@ -82,6 +82,15 @@ try {
     assert.deepEqual(result.directories, []); assert.equal(runtime.mounts.list().length, 0);
     await assert.rejects(() => invoke('browse', { host: 'test-host', path: 'relative' }));
   });
+  await test('browse stores a submitted password for later connects', async () => {
+    await assert.rejects(() => invoke('browse', { host: 'test-host', path: scratch, password: 42 }));
+    assert.equal(runtime.secrets.has('test-host'), false);
+    await invoke('browse', { host: 'test-host', path: scratch, password: 'hunter2' });
+    assert.equal(runtime.secrets.get('test-host'), 'hunter2');
+    const listing = await invoke('list');
+    assert.equal(listing.hosts[0].hasPassword, true);
+    runtime.secrets.delete('test-host');
+  });
   let mount, second;
   await test('connects, persists, and reports a verified workspace', async () => {
     mount = await invoke('connect', { host: 'test-host', remote_path: '/project' });
