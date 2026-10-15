@@ -256,7 +256,10 @@ test('healthy streams and buffered transfers survive their total duration; stall
 });
 
 test('large uploads renew the idle timeout while stdin continues to make progress', async () => {
-  const runner = simulatedRunner("let size=0; process.stdin.on('data',c=>{size+=c.length;process.stdin.pause();setTimeout(()=>process.stdin.resume(),40)});process.stdin.on('end',()=>process.stdout.write(String(size)));", 250);
+  // The deadline must sit far above the cost of starting the simulated ssh process
+  // and below the total time the paused consumer needs, so a slow machine cannot
+  // fail it while a deadline that stops being renewed still does.
+  const runner = simulatedRunner("let size=0; process.stdin.on('data',c=>{size+=c.length;process.stdin.pause();setTimeout(()=>process.stdin.resume(),80)});process.stdin.on('end',()=>process.stdout.write(String(size)));", 1000);
   const input = Buffer.alloc(2 * 1024 * 1024, 120);
   const result = await runner.run({ target: { label: 'test' }, op: 'write', input });
   assert.equal(result.code, 0); assert.equal(result.stdout.toString(), String(input.length));
