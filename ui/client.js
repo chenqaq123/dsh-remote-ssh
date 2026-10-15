@@ -6,6 +6,9 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const { useState, useEffect, useRef } = React;
     const PANEL = 'ssh-remote';
+    /** Marker the host appends to errors the user resolves by entering a password. */
+    const PASSWORD_MARKER = '[ssh-password-required]';
+    const needsPassword = (error) => (error?.message || String(error ?? '')).includes(PASSWORD_MARKER);
     const BADGE_CSS = `
       .dsh-ssh-workspace-label{display:flex!important;align-items:center;gap:7px;min-width:0}
       .dsh-ssh-workspace-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -58,6 +61,11 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page .dsh-ssh-folder{display:flex;width:100%;align-items:center;gap:10px;border:0;text-align:left;padding:10px 8px}
       .dsh-ssh-folder svg{flex-shrink:0;color:#6796f5}.dsh-ssh-folder span{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}.dsh-ssh-folder b{margin-left:auto;font-weight:400;opacity:.5}
       .dsh-ssh-check{display:flex;align-items:center;gap:8px;font-size:12px}.dsh-ssh-page .dsh-ssh-check input{width:15px;height:15px}
+      .dsh-ssh-optional{font-weight:400;opacity:.62}
+      .dsh-ssh-password-note{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0}
+      .dsh-ssh-page .dsh-ssh-inline{min-height:0;padding:2px 8px;border:0;font-size:12px;text-decoration:underline;opacity:.75}
+      .dsh-ssh-page .dsh-ssh-inline:hover:not(:disabled){background:transparent;opacity:1}
+      .dsh-ssh-page input[type=password].dsh-ssh-needed{border-color:#c34c4c}
       .dsh-ssh-dialog-footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
       @media(max-width:650px){.dsh-ssh-page{padding-left:18px;padding-right:18px}.dsh-ssh-grid{grid-template-columns:1fr}.dsh-ssh-card{padding:18px}.dsh-ssh-form-footer{align-items:flex-start;flex-direction:column}.dsh-ssh-form-footer button{width:100%}.dsh-ssh-header{align-items:flex-start}.dsh-ssh-row{gap:8px}}
     `;
@@ -145,7 +153,9 @@ window.__ModuleLoader__.load({
     }
     function friendly(error) {
       const message = error?.message || String(error);
-      if (/Permission denied|publickey|authentication/i.test(message)) return 'SSH 认证失败。请确认该服务器已配置密钥登录，且密钥已解锁。';
+      // The host needs a password: the panel shows the password field instead.
+      if (needsPassword(error)) return message.split(PASSWORD_MARKER).join('').trim();
+      if (/Permission denied|publickey|authentication/i.test(message)) return 'SSH 认证失败。请确认密钥已解锁，或为这台服务器输入密码。';
       if (/timed out|timeout|ETIMEDOUT/i.test(message)) return '连接超时。请检查网络、VPN 和服务器是否在线，然后重试。';
       if (/resolve hostname|ENOTFOUND/i.test(message)) return '找不到服务器。请检查 SSH 配置中的主机名和网络连接。';
       if (/Connection refused/i.test(message)) return '服务器拒绝连接。请检查 SSH 服务和端口。';
@@ -228,6 +238,13 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('');
       const [notice, setNotice] = useState('');
       const [confirm, setConfirm] = useState(null);
+      // The password lives only in this component's memory until it is submitted;
+      // the host stores it, and the field is cleared again.
+      const [password, setPassword] = useState('');
+      const [passwordNeeded, setPasswordNeeded] = useState(false);
+      const [prompt, setPrompt] = useState(null);
+      const [promptPassword, setPromptPassword] = useState('');
+      const passwordField = useRef(null);
       const lifetime = useRef(null);
       const lock = useRef(false);
       const refreshId = useRef(0);
@@ -246,15 +263,21 @@ window.__ModuleLoader__.load({
         const unsubscribe = subscribeWorkspaces?.(() => { refresh(controller.signal).catch(() => {}); });
         return () => { unsubscribe?.(); controller.abort(); };
       }, []);
+      // The field is disabled while the failed attempt is still settling, so the
+      // focus has to wait for that render rather than run inside the catch.
+      useEffect(() => {
+        if (passwordNeeded && !busy && !loading) passwordField.current?.focus();
+      }, [passwordNeeded, busy, loading]);
       async function run(key, operation) {
         if (lock.current) return;
         lock.current = true;
-        setBusy(key); setError(''); setNotice('');
+        setBusy(key); setError(''); setNotice(''); setPasswordNeeded(false);
         const signal = lifetime.current.signal;
         try { await operation(signal); }
         catch (e) {
           if (!signal.aborted) {
             setError(friendly(e));
+            if (needsPassword(e)) setPasswordNeeded(true);
             await refresh(signal).catch(() => {});
           }
         } finally {
@@ -267,12 +290,15 @@ window.__ModuleLoader__.load({
         event.preventDefault();
         if (!path.startsWith('/')) { setError('请先选择远程项目目录。'); return; }
         await run('connect', async (signal) => {
-          const mount = await api('connect', { host, remote_path: path, ...(name.trim() ? { name: name.trim() } : {}) }, signal);
+          const mount = await api('connect', { host, remote_path: path, ...(name.trim() ? { name: name.trim() } : {}),
+            ...(password.length > 0 ? { password } : {}) }, signal);
+          setPassword('');
           await refresh(signal);
           setNotice('连接成功，正在打开远程工作区…');
           await openWorkspace(mount.localDir, signal);
         });
       }
+      const selectedHost = snapshot.hosts.find((entry) => entry.alias === host);
       const statuses = { connected: '可连接', saved: '待检查', error: '连接失败' };
       return h('section', { className: 'dsh-ssh-page', 'aria-label': '远程工作区' },
         h('style', null, CSS),
@@ -289,7 +315,8 @@ window.__ModuleLoader__.load({
               h('label', { className: 'dsh-ssh-field' }, '服务器',
                 h('select', { value: host, onChange: (e) => setHost(e.target.value), disabled: disabled || !snapshot.hosts.length, required: true },
                   !snapshot.hosts.length && h('option', { value: '' }, loading ? '正在读取服务器…' : '未找到 SSH 服务器'),
-                  snapshot.hosts.map((entry) => h('option', { value: entry.alias, key: entry.alias }, entry.alias))),
+                  snapshot.hosts.map((entry) => h('option', { value: entry.alias, key: entry.alias },
+                    entry.hasPassword ? `${entry.alias} · 密码已保存` : entry.alias))),
                 h('span', { className: 'dsh-ssh-muted' }, snapshot.hosts.find(entry => entry.alias === host)?.hostname ?? '')),
               h('div', { className: 'dsh-ssh-field' }, h('span', { id: 'dsh-ssh-directory-label' }, '远程项目目录'),
                 h('button', { type: 'button', className: 'dsh-ssh-picker', disabled: disabled || !host,
@@ -298,9 +325,24 @@ window.__ModuleLoader__.load({
             h('label', { className: 'dsh-ssh-field dsh-ssh-name-field' }, '工作区名称',
               h('input', { value: name, maxLength: 80, disabled, placeholder: path.split('/').filter(Boolean).pop() || '默认使用项目文件夹名称',
                 onChange: (e) => setSelection(current => ({ ...current, name: e.target.value })) })),
+            h('label', { className: 'dsh-ssh-field dsh-ssh-name-field' },
+              h('span', null, '密码 ', h('span', { className: 'dsh-ssh-optional' }, '（密码登录的服务器才需要，留空则使用密钥或代理）')),
+              h('input', { ref: passwordField, type: 'password', value: password, disabled, autoComplete: 'new-password',
+                className: passwordNeeded ? 'dsh-ssh-needed' : undefined,
+                placeholder: passwordNeeded ? '这台服务器需要密码，输入后点击「连接并打开」' : '仅用于这台服务器，保存在本机',
+                onChange: (e) => { setPassword(e.target.value); setPasswordNeeded(false); } })),
+            selectedHost?.hasPassword === true && h('p', { className: 'dsh-ssh-muted dsh-ssh-password-note' },
+              h('span', null, '已保存这台服务器的密码，连接时会自动使用。'),
+              h('button', { type: 'button', className: 'dsh-ssh-inline', disabled, onClick: () => run('forgetPassword', async (signal) => {
+                await api('forgetPassword', { host }, signal);
+                await refresh(signal);
+                setNotice(`已清除 ${host} 保存的密码。`);
+              }) }, busy === 'forgetPassword' ? '清除中…' : '清除密码')),
             h('div', { className: 'dsh-ssh-form-footer' },
               h('button', { type: 'submit', className: 'dsh-ssh-primary', disabled: disabled || !host || !path.trim() }, busy === 'connect' ? '连接并打开中…' : '连接并打开')),
             !loading && !snapshot.hosts.length && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 16 } }, '请先在 ~/.ssh/config 添加服务器，再点击刷新。'),
+            h('p', { className: 'dsh-ssh-muted', style: { marginTop: 16 } },
+              '密码只保存在本机（默认 ~/.dsh/ssh-remote/secrets.json，仅当前用户可读写），用于自动登录，可随时清除。'),
             snapshot.warnings.map((warning, i) => h('p', { className: 'dsh-ssh-muted', key: i }, warning))),
           picker && h(DirectoryPicker, { api, host, initialPath: path, onClose: () => setPicker(false),
             onSelect: (next) => { setPath(next); setPicker(false); } }),
@@ -325,9 +367,26 @@ window.__ModuleLoader__.load({
               h('button', { disabled, onClick: () => run(`check:${mount.localDir}`, async (signal) => {
                 await api('check', { local_path: mount.localDir }, signal); await refresh(signal);
               }) }, busy === `check:${mount.localDir}` ? '检查中…' : '检查连接'),
+              needsPassword(mount.message) && h('button', { disabled, onClick: () => {
+                setPrompt({ path: mount.localDir }); setPromptPassword('');
+              } }, mount.hasPassword ? '重新输入密码' : '输入密码'),
               h('button', { disabled, onClick: () => setConfirm({ path: mount.localDir, action: 'disconnect' }) }, '断开'),
               h('button', { disabled, className: 'dsh-ssh-danger', onClick: () => setConfirm({ path: mount.localDir, action: 'remove' }) }, '移除工作区')),
             mount.checkedAt && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 10 } }, `上次检查：${new Date(mount.checkedAt).toLocaleString()}`),
+            prompt?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
+              h('p', { className: 'dsh-ssh-muted' }, `输入 ${mount.alias} 的密码，保存在本机后会立即重试连接。`),
+              h('input', { type: 'password', value: promptPassword, disabled, autoComplete: 'new-password',
+                placeholder: '密码', 'aria-label': `${mount.alias} 的密码`, style: { marginBottom: 12 },
+                onChange: (e) => setPromptPassword(e.target.value) }),
+              h('div', { className: 'dsh-ssh-actions' },
+                h('button', { className: 'dsh-ssh-primary', disabled: disabled || promptPassword.length === 0,
+                  onClick: () => run(`check:${mount.localDir}`, async (signal) => {
+                    await api('check', { local_path: mount.localDir, password: promptPassword }, signal);
+                    setPrompt(null); setPromptPassword('');
+                    await refresh(signal);
+                    setNotice('密码已保存到本机，正在重新连接这台服务器。');
+                  }) }, busy === `check:${mount.localDir}` ? '重试中…' : '保存密码并重试'),
+                h('button', { disabled, onClick: () => { setPrompt(null); setPromptPassword(''); } }, '取消'))),
             confirm?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
               h('p', { className: 'dsh-ssh-muted' }, confirm.action === 'remove'
                 ? '将移除工作区并归档其中的会话，历史记录和远程文件会保留。已进入“未分组”的相关会话也会归档。请先结束正在运行的任务。'

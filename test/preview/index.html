@@ -10,10 +10,10 @@ const folderIcon=()=>h('svg',{width:16,height:16,viewBox:'0 0 24 24',fill:'none'
 const primitives=new Proxy({Tooltip:({children})=>children,HoverCard:({anchor})=>anchor,Menu:({anchor})=>anchor},{get(target,key){return target[key]||folderIcon}});
 const native=window.nativeWorkspaceBundle?.factory(name=>({'react':React,'react/jsx-runtime':{jsx:(type,props,key)=>h(type,{...props,key}),jsxs:(type,props,key)=>h(type,{...props,key}),Fragment:React.Fragment},'@deepseek-ai/cordis':{Service:class{}},'@deepseek-ai/dsh-client-store':{},'@deepseek-ai/dsh-client-ui-primitives':primitives})[name]);
 const NativeRow=native?.PreviewProjectRow||function({group,onToggle}){return h('div',{'data-row-key':'workspace:'+group.key,className:'workspace',onClick:onToggle,role:'treeitem'},h('span',null,h(folderIcon)),h('span',{style:{display:'none'}}),h('span',{style:{flex:1,minWidth:0}},h('span',{className:'native-title'},group.label)),h('span'))};
-window.calls=[];window.failConnect=false;window.delayConnect=false;window.noHosts=false;
+window.calls=[];window.failConnect=false;window.delayConnect=false;window.noHosts=false;window.needPassword=false;
 window.workspaceListeners=new Set();window.archivedSessionIds=[];
 window.mounts=[{name:'lingbo',hostname:'cgx190',alias:'cgx190',title:'lingbo · cgx190',workspaceId:'demo-workspace',remoteDir:'/home/demo/projects/sample-project',localDir:'/demo/workspaces/sample-project',status:'saved',checkedAt:null,message:''}];
-window.hosts=[{alias:'cgx190',hostname:'192.0.2.190'},{alias:'cgx30',hostname:'192.0.2.30'}];
+window.hosts=[{alias:'cgx190',hostname:'192.0.2.190',hasPassword:false},{alias:'cgx30',hostname:'192.0.2.30',hasPassword:false}];
 window.nativeWorkspaces=[{workspaceId:'demo-workspace',path:'/demo/workspaces/sample-project',title:'lingbo · cgx190'}];
 window.rowToggles=0;window.rowExpanded=false;
 const nativeRoot=ReactDOM.createRoot(document.getElementById('workspaces'));
@@ -35,9 +35,13 @@ const ctx={
   }
   if(method==='connect'){
    if(window.delayConnect)await delay(350,signal);
+   if(window.needPassword)return {ok:false,error:{message:'服务器 '+request.host+' 需要密码认证。请在「密码」中填写密码并重试，密码会保存在本机，之后无需再次输入。 [ssh-password-required]'}};
    if(window.failConnect)return {ok:false,error:{message:'Permission denied (publickey)'}};
-   const value={name:request.name||request.remote_path.split('/').pop(),hostname:request.host,alias:request.host,remoteDir:request.remote_path,localDir:'/demo/workspaces/connected',status:'connected',checkedAt:new Date().toISOString(),message:''};value.title=value.name+' · '+value.hostname;window.mounts=[value];return {ok:true,value};
+   const value={name:request.name||request.remote_path.split('/').pop(),hostname:request.host,alias:request.host,remoteDir:request.remote_path,localDir:'/demo/workspaces/connected',status:'connected',checkedAt:new Date().toISOString(),message:''};
+   if(request.password)window.hosts=window.hosts.map(host=>host.alias===request.host?{...host,hasPassword:true}:host);
+   value.hasPassword=!!request.password;value.title=value.name+' · '+value.hostname;window.mounts=[value];return {ok:true,value};
   }
+  if(method==='forgetPassword'){window.hosts=window.hosts.map(host=>host.alias===request.host?{...host,hasPassword:false}:host);window.mounts=window.mounts.map(mount=>mount.alias===request.host?{...mount,hasPassword:false}:mount);return {ok:true,value:{removed:true}};}
   if(method==='open'){window.mounts[0].workspaceId='demo-workspace';window.nativeWorkspaces=[{workspaceId:'demo-workspace',path:window.mounts[0].localDir,title:window.mounts[0].title}];window.renderSidebar();window.workspaceListeners.forEach(listener=>listener());return {ok:true,value:{workspaceId:'demo-workspace'}};}
   if(method==='check'){window.mounts[0].status='connected';window.mounts[0].checkedAt=new Date().toISOString();return {ok:true,value:window.mounts[0]};}
   if(method==='disconnect'){window.mounts=[];return {ok:true,value:{closed:true}};}

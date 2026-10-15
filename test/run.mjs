@@ -10,13 +10,16 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { encodeArg, parseListPayload, parseStatHeader, parseWriteHeader, REMOTE_SCRIPT, splitFramed } from '../lib/remote-protocol.js';
 import { joinRemote, MountTable, normalizeRemote, remoteContains } from '../lib/mounts.js';
 import { describeHost, listHosts, parseSshConfig, resolveHost } from '../lib/ssh-config.js';
+import { SecretStore } from '../lib/secrets.js';
+import { PASSWORD_ENV, SshRunner, targetFor } from '../lib/ssh-runner.js';
+import { authMethods, classifyAuthFailure, isPasswordRequired, offersPassword, stripMarker } from '../lib/auth.js';
 
 let passed = 0;
 let failed = 0;
@@ -398,6 +401,94 @@ test('a corrupt store does not break loading', () => {
   writeFileSync(file, '{not json');
   const table = new MountTable({ storageFile: file, resolveHost: () => ({}) }).load();
   assert.deepEqual(table.list(), []);
+});
+
+section('password store');
+test('stores, reloads, and clears one password per destination', () => {
+  const file = join(sandbox, 'secrets', 'secrets.json');
+  const store = new SecretStore({ file });
+  assert.equal(store.get('dev'), undefined);
+  store.set('dev', 'hunter2');
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(new SecretStore({ file }).aliases(), ['dev']);
+  assert.equal(new SecretStore({ file }).get('dev'), 'hunter2');
+  assert.equal(store.delete('dev'), true);
+  assert.equal(store.delete('dev'), false);
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).secrets, {});
+});
+
+test('rejects passwords ssh could never accept', () => {
+  const store = new SecretStore({ file: join(sandbox, 'secrets', 'reject.json') });
+  for (const bad of ['', 'line\nbreak', 'carriage\rreturn', 'x'.repeat(513)]) assert.throws(() => store.set('dev', bad));
+  assert.throws(() => store.set('-option', 'pw'), /服务器名称/u);
+  assert.throws(() => store.set('two words', 'pw'), /服务器名称/u);
+  assert.throws(() => new SecretStore({ file: 'relative.json' }), /absolute/u);
+  assert.throws(() => new SecretStore({}), /absolute/u);
+});
+
+test('repairs a widened mode, and a corrupt file never breaks loading', () => {
+  const file = join(sandbox, 'secrets', 'wide.json');
+  mkdirSync(join(sandbox, 'secrets'), { recursive: true });
+  writeFileSync(file, JSON.stringify({ version: 1, secrets: { dev: 'pw' } }));
+  chmodSync(file, 0o644);
+  const warnings = [];
+  assert.equal(new SecretStore({ file, warn: (message) => warnings.push(message) }).get('dev'), 'pw');
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(warnings.length, 1);
+  const corrupt = join(sandbox, 'secrets', 'corrupt.json');
+  writeFileSync(corrupt, '{oops');
+  assert.deepEqual(new SecretStore({ file: corrupt, warn: () => {} }).aliases(), []);
+});
+
+section('password auth wiring');
+test('a stored password switches ssh to askpass without putting the secret in argv', () => {
+  const secrets = new SecretStore({ file: join(sandbox, 'secrets', 'runner.json') });
+  const runner = new SshRunner({ sshBinary: 'ssh', batchMode: true, connectTimeoutSec: 10, controlPersistSec: 60,
+    multiplex: true, strictHostKeyChecking: 'accept-new', extraSshArgs: [] }, secrets);
+  const target = targetFor({ alias: 'dev.example.com', hostname: 'dev.example.com', user: 'demo' }, { alias: 'dev' });
+  assert.ok(runner.argv(target, 'true').includes('BatchMode=yes'));
+  assert.deepEqual(runner.askpassEnv(target), {}, 'an untouched host must not change');
+  secrets.set('dev', "pa'ss $word");
+  const argv = runner.argv(target, 'true');
+  assert.ok(argv.includes('BatchMode=no'));
+  assert.ok(argv.includes('NumberOfPasswordPrompts=1'));
+  assert.ok(!argv.join(' ').includes("pa'ss $word"));
+  const env = runner.askpassEnv(target);
+  assert.equal(env.SSH_ASKPASS_REQUIRE, 'force');
+  assert.equal(env[PASSWORD_ENV], "pa'ss $word");
+  assert.equal(statSync(env.SSH_ASKPASS).mode & 0o777, 0o700);
+  // The helper is what ssh executes, so its stdout must be the password and nothing else.
+  const answer = spawnSync('sh', [env.SSH_ASKPASS], { env: { ...process.env, ...env } });
+  assert.equal(answer.stdout.toString('utf8'), "pa'ss $word\n");
+  assert.equal(runner.spawnEnv(target)[PASSWORD_ENV], "pa'ss $word");
+});
+
+test('a host-key question is never answered with the password', () => {
+  const secrets = new SecretStore({ file: join(sandbox, 'secrets', 'hostkey.json') });
+  const runner = new SshRunner({ sshBinary: 'ssh', batchMode: true, connectTimeoutSec: 10, controlPersistSec: 60,
+    multiplex: true, strictHostKeyChecking: 'default', extraSshArgs: [] }, secrets);
+  const target = targetFor({ alias: 'dev.example.com', hostname: 'dev.example.com' }, { alias: 'dev' });
+  const asks = (argv) => argv.some((value) => value.startsWith('StrictHostKeyChecking'));
+  assert.equal(asks(runner.argv(target, 'true')), false);
+  secrets.set('dev', 'pw');
+  assert.ok(runner.argv(target, 'true').includes('StrictHostKeyChecking=accept-new'));
+});
+
+section('auth failure classification');
+test('asks for a password only when the server offers one', () => {
+  assert.deepEqual(authMethods('demo@h: Permission denied (publickey,password,keyboard-interactive).'),
+    ['publickey', 'password', 'keyboard-interactive']);
+  assert.deepEqual(authMethods('ssh: connect to host h port 22: Connection refused'), []);
+  assert.equal(offersPassword('h: Permission denied (keyboard-interactive).'), true);
+  assert.equal(offersPassword('h: Permission denied (publickey).'), false);
+  const needed = classifyAuthFailure({ label: 'dev', hasPassword: false, stderr: 'h: Permission denied (publickey,password).' });
+  assert.ok(isPasswordRequired(needed));
+  assert.match(needed.message, /需要密码认证/u);
+  assert.equal(stripMarker(needed.message).includes('ssh-password-required'), false);
+  assert.match(classifyAuthFailure({ label: 'dev', hasPassword: true, stderr: 'h: Permission denied (publickey,password).' }).message, /认证失败/u);
+  assert.equal(classifyAuthFailure({ label: 'dev', hasPassword: false, stderr: 'h: Permission denied (publickey).' }), undefined);
+  assert.equal(classifyAuthFailure({ label: 'dev', hasPassword: true, stderr: 'h: Permission denied (publickey).' }), undefined);
+  assert.equal(classifyAuthFailure({ label: 'dev', hasPassword: false, stderr: 'Host key verification failed.' }), undefined);
 });
 
 rmSync(sandbox, { recursive: true, force: true });

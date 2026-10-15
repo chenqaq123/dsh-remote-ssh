@@ -95,6 +95,27 @@ async function main(){
   await button('连接并打开').click();await button('检查连接').waitFor();
   await button('检查连接').click();await button('断开').click();await button('取消').click();assert.equal(await page.evaluate(()=>window.calls.some(c=>c.method==='disconnect')),false);
   await button('断开').click();await button('确认断开').click();await page.getByText('还没有远程工作区',{exact:true}).waitFor();
+  // A password host: the panel asks for the password, keeps it out of the next
+  // submit, and offers to clear the stored one again.
+  const passwordInput=page.locator('input[type=password]');
+  await page.evaluate(()=>{window.needPassword=true});
+  await page.getByRole('combobox').selectOption('cgx30');
+  await button('连接并打开').click();
+  await page.getByRole('alert').filter({hasText:'需要密码认证'}).waitFor();
+  assert.equal(await passwordInput.evaluate(el=>document.activeElement===el),true,'the password field takes focus');
+  assert.equal((await page.getByRole('alert').innerText()).includes('ssh-password-required'),false,'the marker stays hidden');
+  await passwordInput.fill('hunter2');
+  await page.evaluate(()=>{window.needPassword=false});
+  await button('连接并打开').click();
+  await page.waitForFunction(()=>window.calls.some(call=>call.method==='connect'&&call.request.password==='hunter2'));
+  await button('检查连接').waitFor();
+  assert.equal(await passwordInput.inputValue(),'','the password is not kept in the form');
+  await page.getByText('已保存这台服务器的密码，连接时会自动使用。',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('combobox').evaluate(el=>el.selectedOptions[0].textContent),'cgx30 · 密码已保存');
+  await button('清除密码').click();
+  await page.waitForFunction(()=>window.calls.some(call=>call.method==='forgetPassword'));
+  await page.getByText('已保存这台服务器的密码，连接时会自动使用。',{exact:true}).waitFor({state:'detached'});
+  assert.equal(await page.getByRole('combobox').evaluate(el=>el.selectedOptions[0].textContent),'cgx30');
   await page.setViewportSize({width:420,height:900});await page.getByRole('button',{name:/^更改目录/}).click();await dialog.getByText('此目录没有子文件夹。',{exact:true}).waitFor();
   assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth),true);await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>!!document.activeElement.closest('dialog')),true);
   mkdirSync(path.join(root,'test/artifacts'),{recursive:true});await page.screenshot({path:path.join(root,'test/artifacts/narrow-dark.png')});

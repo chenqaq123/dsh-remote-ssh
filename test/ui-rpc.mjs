@@ -1,11 +1,13 @@
 /** Real Gateway validation and local-only SSH simulation; no network required. */
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { passwordRequiredError } from '../lib/auth.js';
 import { REMOTE_SCRIPT, encodeArg } from '../lib/remote-protocol.js';
+import { SecretStore } from '../lib/secrets.js';
 import { loadHostModules } from '../lib/host-modules.js';
 import { MountTable } from '../lib/mounts.js';
 import { createWorkspaceActions } from '../lib/workspace-actions.js';
@@ -16,7 +18,7 @@ const { TypertRegistry } = await import(`${host.root}/dsh-typert-registry/lib/in
 const { TypertGatewayService } = await import(`${host.root}/dsh-api-gateway/lib/index.js`);
 const { ClientModuleRegistry } = await import(`${host.root}/dsh-client-modules/lib/index.js`);
 const scratch = mkdtempSync(join(tmpdir(), 'dsh-ui-rpc-'));
-let calls = 0, closed = 0, failure = false;
+let calls = 0, closed = 0, failure = false, needsPassword = false;
 const ctx = new host.cordis.Context();
 new TypertRegistry(ctx);
 const gateway = new TypertGatewayService(ctx, TypertGatewayService.Config({}));
@@ -24,9 +26,15 @@ ctx.provide('sshRemote', { listHosts: () => ({ hosts: [{ alias: 'test-host', hos
 const runtime = {
   ctx, configBlocks: [], config: { mirrorRoot: join(scratch, 'mirrors'), operationTimeoutMs: 1000 },
   mounts: new MountTable({ storageFile: join(scratch, 'mounts.json'), resolveHost: () => ({}) }),
+  secrets: new SecretStore({ file: join(scratch, 'ssh-remote', 'secrets.json') }),
   targetOf: (alias) => ({ alias }),
   runner: {
-    async hello() { calls++; if (failure) throw new Error('Permission denied (publickey)'); return 'host=GPU-DEV kernel=Linux gnu_stat=1'; },
+    async hello() {
+      calls++;
+      if (needsPassword) throw passwordRequiredError('test-host');
+      if (failure) throw new Error('Permission denied (publickey)');
+      return 'host=GPU-DEV kernel=Linux gnu_stat=1';
+    },
     async run({ op, args }) {
       calls++;
       if (op === 'browse') {
@@ -113,6 +121,37 @@ try {
     const controller = new AbortController(); controller.abort(); const before = calls;
     await assert.rejects(() => runtime.workspaceActions.connect({ host: 'test-host', remote_path: '/cancelled' }, controller.signal));
     assert.equal(calls, before); assert.equal(runtime.mounts.list().length, 0);
+  });
+  await test('a password host is reported, stored from the panel, and forgettable again', async () => {
+    assert.equal((await invoke('list')).hosts[0].hasPassword, false);
+    await assert.rejects(() => invoke('connect', { host: 'test-host', remote_path: '/secured', password: '' }));
+    await assert.rejects(() => invoke('connect', { host: 'test-host', remote_path: '/secured', password: 'x'.repeat(513) }));
+    await assert.rejects(() => invoke('connect', { host: 'test-host', remote_path: '/secured', password: 42 }));
+    assert.equal(runtime.secrets.has('test-host'), false);
+
+    needsPassword = true;
+    await assert.rejects(() => invoke('connect', { host: 'test-host', remote_path: '/secured' }), (error) => {
+      assert.match(error.message, /ssh-password-required/u);
+      return true;
+    });
+    assert.equal(runtime.secrets.has('test-host'), false, 'a refusal must not store anything');
+
+    needsPassword = false;
+    const secured = await invoke('connect', { host: 'test-host', remote_path: '/secured', password: 'hunter2' });
+    assert.equal(runtime.secrets.get('test-host'), 'hunter2');
+    assert.equal(statSync(runtime.secrets.file).mode & 0o777, 0o600);
+    assert.equal((await invoke('list')).hosts[0].hasPassword, true);
+    assert.equal((await invoke('list')).mounts.find((entry) => entry.localDir === secured.localDir).hasPassword, true);
+
+    await invoke('check', { local_path: secured.localDir, password: 'hunter3' });
+    assert.equal(runtime.secrets.get('test-host'), 'hunter3', 'a password submitted while checking replaces the stored one');
+
+    assert.deepEqual(await invoke('forgetPassword', { host: 'test-host' }), { removed: true });
+    assert.deepEqual(await invoke('forgetPassword', { host: 'test-host' }), { removed: false });
+    await assert.rejects(() => invoke('forgetPassword', { host: 'test-host', extra: true }));
+    assert.equal((await invoke('list')).hosts[0].hasPassword, false);
+    await invoke('disconnect', { local_path: secured.localDir });
+    assert.equal(runtime.mounts.list().length, 0);
   });
   console.log(`\n${passed} passed, 0 failed`);
 } finally { rmSync(scratch, { recursive: true, force: true }); }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-ssh-remote",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "SSH remote workspaces and a graphical directory picker for DeepSeek Harness Desktop.",
   "type": "module",
   "main": "index.js",
@@ -37,7 +37,10 @@
   "engines": {
     "node": ">=20"
   },
-  "os": ["darwin", "linux"],
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -57,7 +60,7 @@
     "dsh-ssh-remote": "scripts/profile.mjs"
   },
   "scripts": {
-    "test": "node test/run.mjs && node --test test/regression.mjs test/install.mjs test/socket-path.mjs test/workspace-removal.mjs test/workspace-names.mjs test/shell-status.mjs",
+    "test": "node test/run.mjs && node --test test/regression.mjs test/install.mjs test/socket-path.mjs test/workspace-removal.mjs test/workspace-names.mjs test/shell-status.mjs test/password-auth.mjs",
     "test:ui": "node test/ui-browser.cjs",
     "test:harness": "node test/local-startup.mjs && node test/ui-rpc.mjs && node test/harness-removal.mjs && node test/review-harness.mjs",
     "prepack": "npm test"
@@ -65,6 +68,7 @@
   "devDependencies": {
     "playwright": "^1.58.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ssh2": "^1.17.0"
   }
 }

@@ -12,6 +12,12 @@
  * `cordis.patch.yml` disables the built-in `fs-sandbox` and `bash-sandbox`
  * providers; this plugin replaces both.
  *
+ * Authentication is whatever `ssh` itself would accept: keys, an agent, a proxy
+ * jump. Servers that ask for a password are supported too — the panel stores one
+ * password per destination and a generated askpass helper replays it, so the
+ * password is typed once and connection multiplexing covers every later
+ * operation.
+ *
  * @module dsh-ssh-remote
  */
 
@@ -19,6 +25,7 @@ import { join } from 'node:path';
 import { createSshFileSystem } from './lib/fs-remote.js';
 import { loadHostModules } from './lib/host-modules.js';
 import { MountTable, normalizeLocal, normalizeRemote } from './lib/mounts.js';
+import { SecretStore } from './lib/secrets.js';
 import { defaultConfigPaths, describeHost, expandHome, listHosts, parseSshConfig } from './lib/ssh-config.js';
 import { SshRunner, targetFor } from './lib/ssh-runner.js';
 import { createSshShellExecutor } from './lib/shell-remote.js';
@@ -45,6 +52,7 @@ function defaults() {
     mounts: [],
     mirrorRoot: join(dshHome(), 'ssh-remote', 'workspaces'),
     storageFile: join(dshHome(), 'ssh-remote', 'mounts.json'),
+    secretsFile: join(dshHome(), 'ssh-remote', 'secrets.json'),
     connectTimeoutSec: 10,
     controlPersistSec: 600,
     operationTimeoutMs: 60_000,
@@ -112,7 +120,7 @@ export function resolveConfig(raw) {
       throw new Error(`ssh-remote: config.${key} must contain non-empty strings`);
     }
   }
-  for (const key of ['mirrorRoot', 'storageFile']) {
+  for (const key of ['mirrorRoot', 'storageFile', 'secretsFile']) {
     if (typeof config[key] !== 'string') throw new Error(`ssh-remote: config.${key} must be an absolute path`);
     config[key] = normalizeLocal(expandHome(config[key]));
   }
@@ -146,7 +154,11 @@ export function apply(ctx, rawConfig) {
     return targetFor(describeHost(blocks, alias), { alias });
   };
 
-  const runner = new SshRunner(config);
+  // The panel is the only writer; the runner is the only reader, and it replays a
+  // stored password through an askpass helper so `ssh` never needs a terminal.
+  const secrets = new SecretStore({ file: config.secretsFile,
+    warn: message => ctx.logger?.warn?.('ssh-remote: %s', message) });
+  const runner = new SshRunner(config, secrets);
   const mounts = new MountTable({ storageFile: config.storageFile }).load();
 
   const runtime = {
@@ -154,6 +166,7 @@ export function apply(ctx, rawConfig) {
     config,
     runner,
     mounts,
+    secrets,
     configBlocks: blocks,
     targetOf: resolveTarget,
     local: undefined,

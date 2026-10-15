@@ -1,6 +1,6 @@
 /** Regression tests through the installed Harness tools and policy service. */
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync, symlinkSync, readlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, symlinkSync, readlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -33,7 +33,7 @@ async function boot(config) {
   new LocalSandboxProvider(ctx, defaults(LocalSandboxProvider, {}));
   new SandboxPolicyService(ctx, defaults(SandboxPolicyService, { mode: 'workspace-write', workspaceRoot: local }));
   const fiber = ctx.plugin(plugin, { sshConfigPaths: [], mirrorRoot: join(scratch, 'mirrors'),
-    storageFile: join(scratch, 'mounts.json'), ...config });
+    storageFile: join(scratch, 'mounts.json'), secretsFile: join(scratch, 'secrets.json'), ...config });
   fibers.push(fiber); await fiber.await();
   const calls = [];
   ctx.sshRemote.runtime.runner.hello = async () => 'host=test kernel=Linux gnu_stat=1';
@@ -91,6 +91,30 @@ try {
       const remoteExec = { agent: { session: { id: 'remote-read-only', header: { cwd: mirror } } }, signal: new AbortController().signal };
       await assert.rejects(() => f.registered.get('bash').execute(args, remoteExec), /read-only/);
     } finally { runner.argv = originalArgv; }
+  });
+  await test('a remote bash command carries the askpass environment only for a password host', async () => {
+    const secrets = f.ctx.sshRemote.runtime.secrets;
+    const subprocess = f.ctx.subprocess, spawn = subprocess.spawn;
+    const captured = [];
+    subprocess.spawn = (spec) => { captured.push(spec); throw new Error('captured spawn'); };
+    try {
+      const exec = { agent: { session: { id: 'remote-password', header: { cwd: mirror } } }, signal: new AbortController().signal };
+      const args = { command: 'echo hi', description: 'Check password routing' };
+      await f.registered.get('bash').execute(args, exec).catch(() => undefined);
+      assert.equal(captured.length, 1);
+      assert.equal(captured[0].env.SSH_ASKPASS, undefined, 'a key host must not be handed an askpass helper');
+      secrets.set('dev', 'hunter2');
+      await f.registered.get('bash').execute(args, exec).catch(() => undefined);
+      assert.equal(captured.length, 2);
+      // The bash tool builds its own argv for ctx.subprocess, so this path has to
+      // reach the same askpass environment the runner would have supplied.
+      assert.equal(captured[1].env.SSH_ASKPASS_REQUIRE, 'force');
+      assert.equal(captured[1].env.DSH_SSH_PASSWORD, 'hunter2');
+      assert.equal(statSync(captured[1].env.SSH_ASKPASS).mode & 0o777, 0o700);
+      assert.ok(captured[1].argv.includes('BatchMode=no'));
+      assert.ok(captured[1].argv.includes('NumberOfPasswordPrompts=1'));
+      assert.ok(!captured[1].argv.join(' ').includes('hunter2'));
+    } finally { subprocess.spawn = spawn; secrets.delete('dev'); }
   });
   await test('real remote editing preserves symlinks, target versions, and empty before content', async () => {
     symlinkSync('seed.txt', join(remote, 'link'));
