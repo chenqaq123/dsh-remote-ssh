@@ -15,8 +15,9 @@ window.__ModuleLoader__.load({
       .dsh-ssh-workspace-badge{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font-size:10px;font-weight:400;line-height:1.4;color:var(--dsw-alias-label-tertiary,#8a8f98)}
       .dsh-ssh-remote-dot{width:4px;height:4px;flex-shrink:0;border-radius:50%;background:#86efac}
     `;
+    // BADGE_CSS is installed once in a global <style> (see installWorkspaceBadges)
+    // because the sidebar decorates rows outside this panel.
     const CSS = `
-      ${BADGE_CSS}
       .dsh-ssh-page{height:100%;overflow:auto;box-sizing:border-box;padding:calc(var(--dsh-frame-top-clearance,24px) + 24px) 36px 48px;color:inherit;font-family:inherit}
       .dsh-ssh-inner{max-width:860px;margin:0 auto}.dsh-ssh-page *{box-sizing:border-box}
       .dsh-ssh-header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}
