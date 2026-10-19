@@ -39,6 +39,38 @@ valid_cap() {
 	[ "$1" -ge 0 ] 2>/dev/null
 }
 
+# under_root <path> <root>: true when path is root or sits beneath it.
+under_root() {
+	[ "$1" = "$2" ] && return 0
+	[ "$2" = / ] && return 0
+	case "$1" in "$2"/*) return 0 ;; esac
+	return 1
+}
+
+# in_roots <path> [root...]
+# Checks a write destination against the caller's writable roots. With no roots
+# the caller asks for no confinement, so everything passes. Roots arrive as
+# octal escapes like every other argument.
+in_roots() {
+	ir_path=$1
+	shift
+	[ "$#" -gt 0 ] || return 0
+	for ir_root in "$@"; do
+		ir_root=$(decode "$ir_root"; printf '.')
+		ir_root=${ir_root%.}
+		# An empty root would match every absolute path; the client never sends one.
+		[ -n "$ir_root" ] || continue
+		under_root "$ir_path" "$ir_root" && return 0
+		# The destination is physical, while a configured root may still be a
+		# logical path: compare the root's real spelling as well.
+		if [ -d "$ir_root" ]; then
+			ir_physical=$(CDPATH= cd -P "$ir_root" 2>/dev/null && pwd -P) || ir_physical=
+			if [ -n "$ir_physical" ] && under_root "$ir_path" "$ir_physical"; then return 0; fi
+		fi
+	done
+	return 1
+}
+
 # mkdir failures are not all permission failures (a file ancestor is ENOTDIR,
 # an unwritable ancestor is EACCES, disk and other failures are I/O errors).
 ensure_parent() {
@@ -123,6 +155,7 @@ probe_fields() {
 # --- operations --------------------------------------------------------------
 case "$op" in
 browse)
+	[ "$#" -ge 2 ] || exit 49
 	dir=$(decode "$1"; printf '.')
 	dir=${dir%.}
 	hidden=$(decode "$2"; printf '.')
@@ -150,6 +183,7 @@ hello)
 	;;
 
 stat | lstat)
+	[ "$#" -ge 1 ] || exit 49
 	p=$(decode "$1"; printf '.')
 	p=${p%.}
 	[ "$op" = stat ] && follow=1 || follow=0
@@ -163,6 +197,7 @@ stat | lstat)
 # read <path> [maxBytes|-1]
 # Header: "#V <version> <size> <type>" followed by the raw file bytes.
 read)
+	[ "$#" -ge 2 ] || exit 49
 	p=$(decode "$1"; printf '.')
 	p=${p%.}
 	cap=$(decode "$2"; printf '.')
@@ -178,6 +213,7 @@ read)
 # readrange <path> <offset> <length>
 # Header "#V <version> <size> <type>" then exactly the requested window.
 readrange)
+	[ "$#" -ge 3 ] || exit 49
 	p=$(decode "$1"; printf '.')
 	p=${p%.}
 	off=$(decode "$2"; printf '.')
@@ -197,6 +233,7 @@ readrange)
 #   "T <type> <size> <version> <nameBytes>"
 # followed by exactly <nameBytes> raw name bytes and one newline.
 list)
+	[ "$#" -ge 1 ] || exit 49
 	dir=$(decode "$1"; printf '.')
 	dir=${dir%.}
 	if [ ! -d "$dir" ]; then
@@ -214,11 +251,16 @@ list)
 	done
 	;;
 
-# write <path> <mode|-> <expectedVersion|-> <any|must-exist|must-absent> <diffCap|-1>
-# New content arrives on stdin. Publishes atomically through a sibling temp file
-# and rename(2). Header: "#W <existed 0|1> <version> <type> <oldBytes>" followed
-# by the previous content when captured; oldBytes=-1 means no diff basis.
+# write <path> <mode|-> <expectedVersion|-> <any|must-exist|must-absent> <diffCap|-1> [root...]
+# New content arrives on stdin. A final symbolic link is followed, so a write
+# updates the referent and keeps the link (the contract @deepseek-ai/dsh-fs-local
+# keeps). When roots are supplied, the resolved path must stay under one of them,
+# so a link cannot move a confined write outside the workspace.
+# Publishes atomically through a sibling temp file and rename(2).
+# Header: "#W <existed 0|1> <version> <type> <oldBytes>" followed by the previous
+# content when captured; oldBytes=-1 means no diff basis.
 write)
+	[ "$#" -ge 5 ] || exit 49
 	target=$(decode "$1"; printf '.')
 	target=${target%.}
 	mode=$(decode "$2"; printf '.')
@@ -229,20 +271,30 @@ write)
 	policy=${policy%.}
 	cap=$(decode "$5"; printf '.')
 	cap=${cap%.}
+	shift 5
 	valid_cap "$cap" || exit 49
 	case "$policy" in any|must-exist|must-absent) ;; *) exit 49 ;; esac
 	case "$target" in /*) ;; *) exit 49 ;; esac
 
 	# Write through final symlinks and canonicalize parent symlinks, then publish
 	# beside the referent. Keep literal trailing newlines in paths/readlink output.
+	# The root check runs on the canonical destination and before the final
+	# component is created, so a link that resolves outside the workspace is
+	# refused without writing anything there.
 	links=0
 	while :; do
-		target_dir=${target%/*}; [ -n "$target_dir" ] || target_dir=/
+		raw_dir=${target%/*}; [ -n "$raw_dir" ] || raw_dir=/
 		leaf=${target##*/}
-		ensure_parent "$target_dir"
-		target_dir=$(CDPATH= cd -P "$target_dir" && pwd -P && printf '.') || exit 49
-		target_dir=${target_dir%.}; target_dir=${target_dir%?}
+		if target_dir=$(CDPATH= cd -P "$raw_dir" 2>/dev/null && pwd -P && printf '.'); then
+			target_dir=${target_dir%.}; target_dir=${target_dir%?}
+		else
+			# The destination's own parents may not exist yet; only then create them.
+			ensure_parent "$raw_dir"
+			target_dir=$(CDPATH= cd -P "$raw_dir" && pwd -P && printf '.') || exit 49
+			target_dir=${target_dir%.}; target_dir=${target_dir%?}
+		fi
 		target=${target_dir%/}/$leaf
+		in_roots "$target" "$@" || exit 43
 		[ -L "$target" ] || break
 		links=$((links + 1)); [ "$links" -le 40 ] || exit 49
 		link=$(readlink -n "$target" && printf '.') || exit 49
