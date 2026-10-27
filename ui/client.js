@@ -124,7 +124,9 @@ window.__ModuleLoader__.load({
       let tree = { servers: [] };
       let collapsedServers = new Set();
       let collapsedWorkspaces = new Set();
-      let sectionCollapsed = false;
+      // The whole remote section starts collapsed; expanding it shows every
+      // server and workspace directory in its normal expanded state.
+      let sectionCollapsed = true;
       let disposed = false;
       let busy = false;
       let loaded = false;
