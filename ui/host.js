@@ -2,6 +2,7 @@
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { browseRemote } from '../lib/browse.js';
+import { buildWorkspaceTree } from '../lib/workspace-tree.js';
 
 export async function registerSshUi(ctx, host, runtime) {
   const [{ z }, { TypertRemoteService }] = await Promise.all([
@@ -26,15 +27,26 @@ export async function registerSshUi(ctx, host, runtime) {
     forgetPassword(request) { return { removed: runtime.secrets?.delete(request.host) ?? false }; }
     remove(request) {
       if (!runtime.removeWorkspace) throw new Error('工作区服务尚未就绪，请稍后重试。');
-      return runtime.removeWorkspace(request.local_path);
+      return runtime.removeWorkspace(request.local_path, { retain: false });
     }
+    tree() { return buildWorkspaceTree(runtime); }
   }
   new SshRemoteUi(ctx);
   const label = { name: z.string(), hostname: z.string(), title: z.string() };
   const mount = z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(),
     workspaceId: z.string().optional(),
-    status: z.enum(['saved', 'connected', 'error']), checkedAt: z.string().nullable(), message: z.string(),
-    hasPassword: z.boolean() });
+    status: z.enum(['saved', 'connected', 'disconnected', 'error']), checkedAt: z.string().nullable(), message: z.string(),
+    hasPassword: z.boolean(), orphaned: z.boolean().optional() });
+  const conversationNode = z.object({ id: z.string(), cwd: z.string(), live: z.boolean(),
+    archived: z.boolean(), pinned: z.boolean() });
+  const workspaceNode = z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(),
+    workspaceId: z.string().optional(),
+    status: z.enum(['saved', 'connected', 'disconnected', 'error']), checkedAt: z.string().nullable(), message: z.string(),
+    hasPassword: z.boolean(), orphaned: z.boolean().optional(),
+    conversations: z.array(conversationNode) });
+  const serverNode = z.object({ alias: z.string(), hostname: z.string(), hasPassword: z.boolean(),
+    status: z.enum(['connected', 'saved', 'disconnected', 'error']), message: z.string(),
+    workspaces: z.array(workspaceNode) });
   const pathRequest = z.object({ local_path: z.string().min(1).max(8192) }).strict();
   const password = z.string().min(1).max(512);
   const checkRequest = z.object({ local_path: z.string().min(1).max(8192), password: password.optional() }).strict();
@@ -48,13 +60,15 @@ export async function registerSshUi(ctx, host, runtime) {
       warnings: z.array(z.string()) }) },
     connect: { request: z.object({ host: z.string().min(1).max(512), remote_path: z.string().min(1).max(8192),
       name: z.string().max(80).optional(), password: password.optional() }).strict(),
-      cancel: true, result: z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(), banner: z.string() }) },
+      cancel: true, result: z.object({ alias: z.string(), ...label, remoteDir: z.string(), localDir: z.string(),
+        banner: z.string() }) },
     open: { request: pathRequest, result: z.object({ workspaceId: z.string() }) },
     check: { request: checkRequest, cancel: true, result: mount },
     forgetPassword: { request: z.object({ host: z.string().min(1).max(512) }).strict(),
       result: z.object({ removed: z.boolean() }) },
     disconnect: { request: pathRequest, result: z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(), closed: z.boolean() }) },
     remove: { request: pathRequest, result: z.object({ removed: z.literal(true), localDir: z.string(), archivedSessionIds: z.array(z.string()) }) },
+    tree: { result: z.object({ servers: z.array(serverNode) }) },
   };
   const codec = (method, kind, schema) => ({ mode: 'strict',
     typeSymbol: `dsh-ssh-remote-ui#${method}:${kind}`, create: () => schema });

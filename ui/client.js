@@ -9,14 +9,6 @@ window.__ModuleLoader__.load({
     /** Marker the host appends to errors the user resolves by entering a password. */
     const PASSWORD_MARKER = '[ssh-password-required]';
     const needsPassword = (error) => (error?.message || String(error ?? '')).includes(PASSWORD_MARKER);
-    const BADGE_CSS = `
-      .dsh-ssh-workspace-label{display:flex!important;align-items:center;gap:7px;min-width:0}
-      .dsh-ssh-workspace-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .dsh-ssh-workspace-badge{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font-size:10px;font-weight:400;line-height:1.4;color:var(--dsw-alias-label-tertiary,#8a8f98)}
-      .dsh-ssh-remote-dot{width:4px;height:4px;flex-shrink:0;border-radius:50%;background:#86efac}
-    `;
-    // BADGE_CSS is installed once in a global <style> (see installWorkspaceBadges)
-    // because the sidebar decorates rows outside this panel.
     const CSS = `
       .dsh-ssh-page{height:100%;overflow:auto;box-sizing:border-box;padding:calc(var(--dsh-frame-top-clearance,24px) + 24px) 36px 48px;color:inherit;font-family:inherit}
       .dsh-ssh-inner{max-width:860px;margin:0 auto}.dsh-ssh-page *{box-sizing:border-box}
@@ -36,13 +28,14 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page .dsh-ssh-primary{color:#fff;background:#3869df;border-color:#3869df}
       .dsh-ssh-page .dsh-ssh-primary:hover:not(:disabled){background:#2e5bc9}
       .dsh-ssh-form-footer{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin-top:20px}
-      .dsh-ssh-name-field{margin-top:18px}.dsh-ssh-hostname{display:flex;align-items:center;gap:4px;font-size:10px;margin:8px 0 0;overflow-wrap:anywhere}
+      .dsh-ssh-name-field{margin-top:18px}
       .dsh-ssh-hostname-text{font-family:ui-monospace,SFMono-Regular,monospace;opacity:.62}
       .dsh-ssh-section-title{display:flex;align-items:center;justify-content:space-between;margin:28px 0 13px}
-      .dsh-ssh-section-title h2{font-size:14px;margin:0;font-weight:600}.dsh-ssh-count{opacity:.5;font-size:12px;margin-left:8px}
+      .dsh-ssh-section-title h2{font-size:14px;margin:0;font-weight:600}
       .dsh-ssh-mount{border:1px solid color-mix(in srgb,currentColor 12%,transparent);border-radius:12px;padding:18px 20px;margin-bottom:10px}
       .dsh-ssh-row{display:flex;align-items:center;justify-content:space-between;gap:15px}.dsh-ssh-host{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;min-width:0;overflow-wrap:anywhere}.dsh-ssh-host svg{flex-shrink:0}
       .dsh-ssh-path{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;line-height:1.7;overflow-wrap:anywhere;opacity:.75;margin:9px 0 12px}
+      .dsh-ssh-page .dsh-ssh-rename{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}.dsh-ssh-rename input{max-width:280px;height:34px}
       .dsh-ssh-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.dsh-ssh-status{font-size:11px;white-space:nowrap;border-radius:20px;padding:4px 9px;background:color-mix(in srgb,currentColor 7%,transparent)}
       .dsh-ssh-status.connected{color:#238155;background:#23815515}.dsh-ssh-status.error{color:#ce5656;background:#ce565615}
       .dsh-ssh-empty{text-align:center;padding:40px 20px;border:1px dashed color-mix(in srgb,currentColor 18%,transparent);border-radius:12px}
@@ -69,82 +62,381 @@ window.__ModuleLoader__.load({
       .dsh-ssh-page input[type=password].dsh-ssh-needed{border-color:#c34c4c}
       .dsh-ssh-dialog-footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
       .dsh-ssh-picker-password{display:flex;gap:8px;align-items:center}.dsh-ssh-picker-password input{flex:1;min-width:0}
+      .dsh-ssh-tree{margin-top:2px}
+      .dsh-ssh-server{border:1px solid color-mix(in srgb,currentColor 12%,transparent);border-radius:12px;margin-bottom:12px;background:color-mix(in srgb,currentColor 2%,transparent)}
+      .dsh-ssh-server-head{display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;user-select:none;border-radius:12px}
+      .dsh-ssh-server-head:hover{background:color-mix(in srgb,currentColor 4%,transparent)}
+      .dsh-ssh-server-name{font-weight:650;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .dsh-ssh-server-body{padding:4px 18px 14px;border-top:1px solid color-mix(in srgb,currentColor 8%,transparent)}
       @media(max-width:650px){.dsh-ssh-page{padding-left:18px;padding-right:18px}.dsh-ssh-grid{grid-template-columns:1fr}.dsh-ssh-card{padding:18px}.dsh-ssh-form-footer{align-items:flex-start;flex-direction:column}.dsh-ssh-form-footer button{width:100%}.dsh-ssh-header{align-items:flex-start}.dsh-ssh-row{gap:8px}}
     `;
-    /** The native workspace row has no title slot; decorate only its label span. */
-    function installWorkspaceBadges(ctx, api) {
-      const lifetime = new AbortController();
-      const style = document.createElement('style');
-      style.textContent = BADGE_CSS;
-      document.head.appendChild(style);
-      const decorated = new Map();
-      let mounts = [];
+    /**
+     * A separate 远程工作区 section inside the native sidebar column, next to
+     * 工作区. It owns its own container and never mutates native rows; remote
+     * groups are hidden in the native list through generated CSS rules only.
+     */
+    const SIDEBAR_CSS = `
+      .dsh-sb{flex:none;display:flex;flex-direction:column;min-height:0;max-height:52%;margin-top:6px;padding-top:4px;border-top:1px solid color-mix(in srgb,currentColor 10%,transparent)}
+      .dsh-sb-head{display:flex;align-items:center;gap:6px;padding:6px;border:0;background:none;color:inherit;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;opacity:.82;border-radius:6px}
+      .dsh-sb-head:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 7%,transparent))}
+      .dsh-sb-manage{margin-left:auto;font-size:11px;font-weight:400;opacity:.55;border:0;background:none;color:inherit;cursor:pointer;padding:2px 4px;border-radius:4px}
+      .dsh-sb-manage:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 7%,transparent))}
+      .dsh-sb-body{overflow:auto;min-height:0;padding:2px 0 6px}
+      .dsh-sb-row{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;color:inherit;font:inherit;font-size:13px;text-align:left;padding:4px 6px;border-radius:6px;cursor:pointer;min-height:26px;min-width:0}
+      .dsh-sb-row:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 7%,transparent))}
+      .dsh-sb-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .dsh-sb-server>.dsh-sb-row{font-weight:600}
+      .dsh-sb-server>.dsh-sb-body{padding-left:6px}
+      .dsh-sb-workspace{padding-left:6px}
+      .dsh-sb-workspace>.dsh-sb-body{padding-left:8px}
+      .dsh-sb-workspace-title{opacity:.9}
+      .dsh-sb-conv{padding-left:20px;opacity:.85}
+      .dsh-sb-conv.archived{opacity:.42}
+      .dsh-sb-dot{width:6px;height:6px;border-radius:50%;flex:none;background:#86efac}
+      .dsh-sb-dot.saved{background:#e2b93b}.dsh-sb-dot.error{background:#e56767}.dsh-sb-dot.disconnected{background:#8a8f98}
+      .dsh-sb-chev{flex:none;width:18px;text-align:center;opacity:.5;transition:transform .12s;display:inline-block}
+      .dsh-sb-chev.open{transform:rotate(90deg)}
+      .dsh-sb-empty{font-size:12px;opacity:.55;padding:8px;line-height:1.6}
+      .dsh-sb-new{flex:none;border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+      .dsh-sb-new:hover{opacity:1}
+      .dsh-sb-conv-item{display:flex;align-items:center;gap:2px}
+      .dsh-sb-conv-item .dsh-sb-row{flex:1;min-width:0}
+      .dsh-sb-conv-item.archived{opacity:.42}
+      .dsh-sb-more{flex:none;border:0;background:none;color:inherit;opacity:0;cursor:pointer;font-size:14px;line-height:1;padding:0 4px;border-radius:4px}
+      .dsh-sb-conv:hover .dsh-sb-more,.dsh-sb-conv:focus-within .dsh-sb-more{opacity:.55}
+      .dsh-sb-more-always{opacity:.35}
+      .dsh-sb-more:hover{opacity:1!important;background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 8%,transparent))}
+      .dsh-sb-menu{position:fixed;z-index:9999;min-width:190px;padding:6px;border-radius:10px;background:var(--dsw-alias-bg-elevated,Canvas);color:CanvasText;border:1px solid color-mix(in srgb,currentColor 14%,transparent);box-shadow:0 12px 32px #0006;display:flex;flex-direction:column;gap:2px;font-size:13px}
+      .dsh-sb-menu button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;color:inherit;font:inherit;text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer}
+      .dsh-sb-menu button:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 8%,transparent))}
+      .dsh-sb-menu .dsh-sb-menu-danger{color:#e56767}
+      .dsh-sb-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:10000;max-width:420px;padding:9px 14px;border-radius:8px;background:var(--dsw-alias-bg-elevated,Canvas);color:CanvasText;border:1px solid color-mix(in srgb,currentColor 14%,transparent);box-shadow:0 10px 28px #0005;font-size:12px;line-height:1.5}
+      .dsh-sb-rename{padding:2px 6px}
+      .dsh-sb-rename input{width:100%;height:26px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 22%,transparent);background:Canvas;color:CanvasText;font:inherit;padding:0 6px;box-sizing:border-box}
+    `;
+    function installRemoteSidebar(ctx, api, PANEL) {
+      const style = document.createElement('style'); style.textContent = SIDEBAR_CSS;
+      const hide = document.createElement('style');
+      document.head.append(style, hide);
+      const host = document.createElement('div');
+      host.className = 'dsh-sb';
+      host.setAttribute('aria-label', '远程工作区');
+      let tree = { servers: [] };
+      let collapsedServers = new Set();
+      let collapsedWorkspaces = new Set();
+      let sectionCollapsed = false;
+      let disposed = false;
+      let busy = false;
+      let loaded = false;
       let frame;
-      const rows = '[data-row-key^="workspace:"]';
-      const workspaceItems = () => ctx.workspaces.list.getSnapshot?.().items ?? [];
-      const restore = (label, record) => {
-        const title = workspaceItems().find(item => item.workspaceId === record.id)?.title ?? record.title;
-        label.textContent = title;
-        label.classList.remove('dsh-ssh-workspace-label');
-        decorated.delete(label);
+      let editing = null;
+      let menu;
+      const sessions = () => ctx.sessions?.list?.getSnapshot?.()?.byId ?? {};
+      const key = (alias, name) => `${alias}\u0000${name}`;
+      const el = (tag, className, text) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
       };
-      function render() {
-        frame = undefined;
-        if (lifetime.signal.aborted) return;
-        const items = workspaceItems();
-        const byId = new Map(mounts.map(mount => [mount.workspaceId ?? items.find(item => item.path === mount.localDir)?.workspaceId, mount]));
-        for (const [label, record] of decorated) {
-          if (!label.isConnected || !byId.has(record.id)) restore(label, record);
-        }
-        for (const row of document.querySelectorAll(rows)) {
-          const id = row.getAttribute('data-row-key').slice('workspace:'.length);
-          const mount = byId.get(id);
-          if (!mount) continue;
-          // Folder, chevron, label, actions: use the native label's structural seat,
-          // without depending on generated CSS class names or touching row events.
-          const label = row.querySelector(':scope > span:nth-of-type(3) > span');
-          if (!label) continue;
-          const record = decorated.get(label);
-          const name = label.querySelector('.dsh-ssh-workspace-name');
-          const badge = label.querySelector('.dsh-ssh-workspace-badge');
-          if (name?.textContent === mount.name && badge?.textContent === mount.hostname) continue;
-          const title = items.find(item => item.workspaceId === id)?.title ?? (record && name && badge ? record.title : label.textContent);
-          const nameNode = document.createElement('span');
-          nameNode.className = 'dsh-ssh-workspace-name';
-          nameNode.textContent = mount.name;
-          const badgeNode = document.createElement('span');
-          badgeNode.className = 'dsh-ssh-workspace-badge';
-          badgeNode.setAttribute('aria-label', `远程服务器 ${mount.hostname}`);
-          badgeNode.title = `SSH · ${mount.alias}`;
-          const dot = document.createElement('span');
-          dot.className = 'dsh-ssh-remote-dot';
-          dot.setAttribute('aria-hidden', 'true');
-          badgeNode.append(dot, document.createTextNode(mount.hostname));
-          label.classList.add('dsh-ssh-workspace-label');
-          label.replaceChildren(nameNode, document.createTextNode(' '), badgeNode);
-          decorated.set(label, { id, title });
-        }
+      const chev = (open) => el('span', `dsh-sb-chev${open ? ' open' : ''}`, '›');
+      const warn = (label, error) => console.warn(`[dsh-ssh-remote] ${label}:`, error);
+      let toast;
+      function notify(message) {
+        toast?.remove();
+        toast = el('div', 'dsh-sb-toast', message);
+        toast.setAttribute('role', 'status');
+        document.body.append(toast);
+        setTimeout(() => { toast?.remove(); toast = undefined; }, 4000);
       }
-      const schedule = () => {
-        if (frame === undefined && !lifetime.signal.aborted) frame = requestAnimationFrame(render);
-      };
-      const observer = new MutationObserver(records => {
-        if (records.some(record => (record.target.nodeType === 1 ? record.target : record.target.parentElement)?.closest(rows)
-          || [...record.addedNodes].some(node => node.nodeType === 1 && (node.matches(rows) || node.querySelector(rows))))) schedule();
-      });
-      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-      const refresh = () => api('list', undefined, lifetime.signal).catch(() => {});
-      const unsubscribe = ctx.workspaces.list.subscribe(refresh);
-      refresh();
-      return { refresh, update(snapshot) {
-        if (lifetime.signal.aborted) return;
-        mounts = snapshot.mounts;
-        schedule();
-      }, dispose() {
-        lifetime.abort(); unsubscribe(); observer.disconnect();
+      function closeMenu() {
+        menu?.remove(); menu = undefined;
+        document.removeEventListener('pointerdown', outsideMenu, true);
+        document.removeEventListener('keydown', menuKey, true);
+      }
+      function outsideMenu(event) { if (menu && !menu.contains(event.target)) closeMenu(); }
+      function menuKey(event) { if (event.key === 'Escape') closeMenu(); }
+      function openMenu(x, y, items) {
+        closeMenu();
+        menu = el('div', 'dsh-sb-menu');
+        for (const item of items) {
+          const button = el('button', item.danger ? 'dsh-sb-menu-danger' : '', item.label);
+          button.type = 'button';
+          button.addEventListener('click', () => {
+            closeMenu();
+            Promise.resolve().then(item.run).catch((error) => { warn(item.label, error); notify(`${item.label}失败：${error?.message ?? error}`); });
+          });
+          menu.append(button);
+        }
+        document.body.append(menu);
+        const rect = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+        menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+        document.addEventListener('pointerdown', outsideMenu, true);
+        document.addEventListener('keydown', menuKey, true);
+      }
+      async function renameSession(id, title) {
+        const result = await ctx.sessions.using(id, { source: 'workspaceOperation' }, (reference) => reference.binding.session.rename(title));
+        if (!result.ok) throw new Error(result.error.message);
+        await refresh();
+      }
+      function commitEdit() {
+        const current = editing;
+        editing = null;
+        if (!current) return;
+        const title = current.value.trim();
+        if (!title) { render(); return; }
+        const done = current.kind === 'workspace'
+          ? ctx.workspaces.rename(current.id, title).then(refresh)
+          : renameSession(current.id, title);
+        done.catch((error) => warn('重命名失败', error)).finally(() => render());
+        render();
+      }
+      function startEdit(next) { editing = { ...next, value: next.value ?? '' }; render(); }
+      function restoreScroll(saved) {
+        if (!saved.size) return;
+        const apply = () => host.querySelectorAll('[data-scroll]').forEach((node) => {
+          const value = saved.get(node.getAttribute('data-scroll'));
+          if (value) node.scrollTop = value;
+        });
+        apply();
+        requestAnimationFrame(apply);
+      }
+      function hideRemote(servers) {
+        const rules = [];
+        for (const server of servers) for (const workspace of server.workspaces) {
+          if (typeof workspace.workspaceId !== 'string' || !workspace.workspaceId) continue;
+          const id = workspace.workspaceId.replace(/["\\]/gu, '');
+          rules.push(`[data-row-key="workspace:${id}"]{display:none!important}`);
+          rules.push(`*:has(> [data-row-key="workspace:${id}"]){display:none!important}`);
+          for (const conversation of workspace.conversations ?? []) {
+            const sid = String(conversation.id).replace(/["\\]/gu, '');
+            rules.push(`[data-row-key="session:${sid}"]{display:none!important}`);
+          }
+        }
+        hide.textContent = rules.join('\n');
+      }
+      function openConversation(conversation) {
+        const run = async () => {
+          if (conversation.archived) await ctx.workspaces.unarchiveSession(conversation.id);
+          await ctx.uiWorkspace.openSession(conversation.id);
+        };
+        run().catch((error) => console.warn('[dsh-ssh-remote] open conversation failed:', error));
+      }
+      function newConversation(workspace) {
+        if (!workspace.workspaceId || workspace.orphaned) return;
+        api('open', { local_path: workspace.localDir })
+          .then((opened) => ctx.uiWorkspace.openWorkspace(opened.workspaceId))
+          .catch((error) => console.warn('[dsh-ssh-remote] new conversation failed:', error));
+      }
+      function copySessionId(id) {
+        const done = navigator.clipboard?.writeText?.(id);
+        if (done) return done.catch(() => warn('复制 Session ID 失败'));
+        const area = el('textarea'); area.value = id; document.body.append(area); area.select();
+        document.execCommand('copy'); area.remove();
+      }
+      function conversationMenu(conversation) {
+        const items = [];
+        if (!conversation.archived) items.push({ label: conversation.pinned ? '取消置顶' : '置顶会话',
+          run: () => (conversation.pinned
+            ? ctx.uiWorkspace.unpinSession(conversation.id) : ctx.uiWorkspace.pinSession(conversation.id)).then(refresh) });
+        return items.concat([
+          { label: '重命名', run: () => startEdit({ kind: 'session', id: conversation.id,
+            value: sessions()[conversation.id]?.title?.trim?.() ?? '' }) },
+          { label: '分叉会话', run: () => ctx.uiWorkspace.forkSession(conversation.id).then(refresh) },
+          { label: conversation.archived ? '取消归档' : '归档会话', danger: !conversation.archived,
+            run: () => (conversation.archived
+              ? ctx.uiWorkspace.unarchiveSession(conversation.id) : ctx.uiWorkspace.archiveSession(conversation.id)).then(refresh) },
+          { label: '复制 Session ID', run: () => copySessionId(conversation.id) },
+        ]);
+      }
+      function workspaceMenu(workspace) {
+        if (!workspace.workspaceId || workspace.orphaned) return [];
+        return [
+          { label: '新建对话', run: () => newConversation(workspace) },
+          { label: '重命名工作区', run: () => startEdit({ kind: 'workspace',
+            id: workspace.workspaceId, value: workspace.name ?? '' }) },
+        ];
+      }
+      function editRow(kindLabel, onDone) {
+        const wrap = el('div', 'dsh-sb-rename');
+        const input = el('input');
+        input.value = editing.value;
+        input.setAttribute('aria-label', kindLabel);
+        input.maxLength = 120;
+        input.addEventListener('input', () => { if (editing) editing.value = input.value; });
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') { event.preventDefault(); commitEdit(); }
+          else if (event.key === 'Escape') { event.preventDefault(); editing = null; render(); }
+        });
+        input.addEventListener('blur', () => { if (editing) commitEdit(); });
+        wrap.append(input);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+        return wrap;
+      }
+      function render() {
+        if (disposed) return;
+        frame = undefined;
+        const byId = sessions();
+        const servers = tree.servers ?? [];
+        hideRemote(servers);
+        const savedScroll = new Map();
+        for (const node of host.querySelectorAll('[data-scroll]')) savedScroll.set(node.getAttribute('data-scroll'), node.scrollTop);
+        host.replaceChildren();
+        const head = el('div', 'dsh-sb-head');
+        head.setAttribute('role', 'button');
+        head.tabIndex = 0;
+        head.append(chev(!sectionCollapsed), el('span', null, '远程工作区'));
+        const manage = el('button', 'dsh-sb-manage', '管理');
+        manage.type = 'button';
+        const openPanel = (event) => { event.stopPropagation(); ctx.layout.selectPanel(PANEL); };
+        manage.addEventListener('click', openPanel);
+        head.append(manage);
+        const toggleSection = () => { sectionCollapsed = !sectionCollapsed; render(); };
+        head.addEventListener('click', toggleSection);
+        head.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSection(); } });
+        host.append(head);
+        if (sectionCollapsed) return;
+        const body = el('div', 'dsh-sb-body');
+        body.setAttribute('data-scroll', 'root');
+        host.append(body);
+        if (!loaded && !servers.length) { body.append(el('div', 'dsh-sb-empty', '正在读取远程工作区…')); return; }
+        if (!servers.length) { body.append(el('div', 'dsh-sb-empty', '还没有远程工作区。点「管理」连接服务器。')); return; }
+        for (const server of servers) {
+          const section = el('div', 'dsh-sb-server');
+          const serverHead = el('button', 'dsh-sb-row'); serverHead.type = 'button';
+          const serverOpen = !collapsedServers.has(server.alias);
+          serverHead.append(chev(serverOpen), el('span', 'dsh-sb-title', server.alias));
+          const statusLabel = { connected: '可连接', saved: '待检查', disconnected: '已断开', error: '连接失败' };
+          const dot = el('span', `dsh-sb-dot ${server.status}`);
+          dot.title = statusLabel[server.status] ?? server.status;
+          dot.setAttribute('aria-label', `服务器状态：${dot.title}`);
+          serverHead.append(dot);
+          if (server.hasPassword) serverHead.title = '已保存密码';
+          serverHead.addEventListener('click', () => {
+            if (collapsedServers.has(server.alias)) collapsedServers.delete(server.alias); else collapsedServers.add(server.alias);
+            render();
+          });
+          section.append(serverHead);
+          if (!serverOpen) { body.append(section); continue; }
+          const serverBody = el('div', 'dsh-sb-body');
+          serverBody.setAttribute('data-scroll', `s:${server.alias}`);
+          section.append(serverBody);
+          for (const workspace of server.workspaces) {
+            const workspaceNode = el('div', 'dsh-sb-workspace');
+            const workspaceKey = key(server.alias, workspace.localDir);
+            const workspaceOpen = !collapsedWorkspaces.has(workspaceKey);
+            const workspaceHead = el('button', 'dsh-sb-row'); workspaceHead.type = 'button';
+            // Archived conversations live in the management page, and blank
+            // drafts are not conversations yet, so neither belongs in this list.
+            const conversations = (workspace.conversations ?? [])
+              .filter((conversation) => !conversation.archived && !byId[conversation.id]?.blank);
+            const workspaceLabel = workspace.name || workspace.title || workspace.remoteDir || '远程工作区';
+            workspaceHead.title = workspace.remoteDir ? `${workspaceLabel} · ${workspace.remoteDir}` : workspaceLabel;
+            workspaceHead.append(chev(workspaceOpen),
+              el('span', 'dsh-sb-title dsh-sb-workspace-title', workspaceLabel));
+            if (workspace.status === 'error') {
+              const dot = el('span', 'dsh-sb-dot error');
+              dot.title = workspace.message || '连接失败';
+              dot.setAttribute('aria-label', `工作区状态：${dot.title}`);
+              workspaceHead.append(dot);
+            }
+            workspaceHead.addEventListener('click', () => {
+              if (collapsedWorkspaces.has(workspaceKey)) collapsedWorkspaces.delete(workspaceKey); else collapsedWorkspaces.add(workspaceKey);
+              render();
+            });
+            const workspaceItems = workspaceMenu(workspace);
+            if (workspaceItems.length) {
+              workspaceHead.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                openMenu(event.clientX, event.clientY, workspaceItems);
+              });
+              const more = el('button', 'dsh-sb-more dsh-sb-more-always', '⋯');
+              more.type = 'button';
+              more.title = '工作区操作';
+              more.setAttribute('aria-label', `${workspaceLabel} 的工作区操作`);
+              more.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const rect = more.getBoundingClientRect();
+                openMenu(rect.left, rect.bottom + 4, workspaceItems);
+              });
+              workspaceHead.append(more);
+              const add = el('span', 'dsh-sb-new', '＋');
+              add.setAttribute('role', 'button'); add.title = '新建对话'; add.setAttribute('aria-label', `在 ${workspaceLabel} 中新建对话`);
+              add.addEventListener('click', (event) => { event.stopPropagation(); newConversation(workspace); });
+              workspaceHead.append(add);
+            }
+            workspaceNode.append(workspaceHead);
+            if (editing?.kind === 'workspace' && editing.id === workspace.workspaceId) {
+              workspaceNode.append(editRow(`重命名工作区 ${workspaceLabel}`));
+            }
+            if (workspaceOpen) {
+              const list = el('div', 'dsh-sb-body');
+              list.setAttribute('data-scroll', `w:${server.alias}:${workspace.localDir}`);
+              workspaceNode.append(list);
+              if (!conversations.length) list.append(el('div', 'dsh-sb-empty', '还没有对话'));
+              for (const conversation of conversations) {
+                const session = byId[conversation.id];
+                const title = session?.title?.trim?.() || (session?.blank ? '新对话' : '未命名对话');
+                if (editing?.kind === 'session' && editing.id === conversation.id) {
+                  list.append(editRow(`重命名会话 ${title}`));
+                  continue;
+                }
+                const item = el('div', `dsh-sb-conv-item${conversation.archived ? ' archived' : ''}`);
+                item.setAttribute('data-session', conversation.id);
+                const row = el('button', `dsh-sb-row dsh-sb-conv${conversation.archived ? ' archived' : ''}`); row.type = 'button';
+                row.title = title;
+                if (conversation.live) row.append(el('span', 'dsh-sb-dot'));
+                row.append(el('span', 'dsh-sb-title', title));
+                row.addEventListener('click', () => openConversation(conversation));
+                row.addEventListener('contextmenu', (event) => {
+                  event.preventDefault();
+                  openMenu(event.clientX, event.clientY, conversationMenu(conversation));
+                });
+                const more = el('button', 'dsh-sb-more', '⋯');
+                more.type = 'button';
+                more.title = '会话操作';
+                more.setAttribute('aria-label', `${title} 的会话操作`);
+                more.addEventListener('click', (event) => {
+                  event.stopPropagation();
+                  const rect = more.getBoundingClientRect();
+                  openMenu(rect.left, rect.bottom + 4, conversationMenu(conversation));
+                });
+                item.append(row, more);
+                list.append(item);
+              }
+            }
+            serverBody.append(workspaceNode);
+          }
+          body.append(section);
+        }
+        restoreScroll(savedScroll);
+      }
+      const schedule = () => { if (editing) return; if (frame === undefined) frame = requestAnimationFrame(render); };
+      async function refresh() {
+        if (disposed || busy) return;
+        busy = true;
+        try {
+          const next = await api('tree');
+          if (!disposed) { tree = next; loaded = true; render(); }
+        } catch (error) {
+          console.warn('[dsh-ssh-remote] sidebar tree refresh failed:', error);
+        } finally { busy = false; }
+      }
+      function attach() {
+        const region = document.querySelector('[class*="regionArea"]');
+        if (region && host.parentElement !== region) region.append(host);
+      }
+      const observer = new MutationObserver(() => { if (disposed) return; attach(); });
+      observer.observe(document.body, { childList: true, subtree: true });
+      const unsubscribeWorkspaces = ctx.workspaces.list.subscribe(() => { refresh(); });
+      const unsubscribeSessions = ctx.sessions?.list?.subscribe?.(() => schedule());
+      attach(); refresh();
+      return { refresh, dispose() {
+        disposed = true;
+        observer.disconnect(); unsubscribeWorkspaces?.(); unsubscribeSessions?.();
         if (frame !== undefined) cancelAnimationFrame(frame);
-        for (const [label, record] of decorated) restore(label, record);
-        style.remove();
+        host.remove(); style.remove(); hide.remove();
       } };
     }
     function Icon({ size = 18 } = {}) {
@@ -209,7 +501,7 @@ window.__ModuleLoader__.load({
       return h('dialog', { ref: dialog, 'aria-labelledby': 'dsh-ssh-picker-title',
         onCancel: (e) => { e.preventDefault(); onClose(); } },
         h('div', { className: 'dsh-ssh-dialog-head' }, h('div', null,
-          h('h2', { id: 'dsh-ssh-picker-title' }, '选择远程项目目录'),
+          h('h2', { id: 'dsh-ssh-picker-title' }, '选择远程目录'),
           h('p', { className: 'dsh-ssh-muted' }, `服务器 · ${host}`)),
           h('button', { type: 'button', onClick: onClose, 'aria-label': '关闭目录选择器' }, '关闭')),
         h('div', { className: 'dsh-ssh-actions' },
@@ -242,8 +534,122 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'dsh-ssh-primary', disabled: loading || !data || !!error,
             onClick: () => onSelect(data.path) }, '选择此目录')));
     }
-    function RemotePanel({ api, openWorkspace, subscribeWorkspaces }) {
-      const [snapshot, setSnapshot] = useState({ hosts: [], mounts: [], warnings: [] });
+    function Chevron({ open }) {
+      return h('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+        strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
+        style: { transition: 'transform .15s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' } },
+      h('path', { d: 'M9 6l6 6-6 6' }));
+    }
+    function WorkspaceNode({ mount, disabled, busy, run, statuses, api, openWorkspace, refresh,
+      renameWorkspace, setNotice, prompt, setPrompt, confirm, setConfirm, promptPassword, setPromptPassword }) {
+      const [renaming, setRenaming] = useState(false);
+      const [draft, setDraft] = useState('');
+      const submitRename = (event) => {
+        event.preventDefault();
+        const title = draft.trim();
+        if (!title || !mount.workspaceId) return;
+        run(`rename:${mount.localDir}`, async (signal) => {
+          await renameWorkspace(mount.workspaceId, title);
+          setRenaming(false);
+          await refresh(signal);
+          setNotice(`工作区已重命名为「${title}」。`);
+        });
+      };
+      return h('article', { className: 'dsh-ssh-mount', key: mount.localDir },
+        h('div', { className: 'dsh-ssh-row' }, h('div', { className: 'dsh-ssh-host' }, h(Icon), mount.name),
+          h('span', { className: `dsh-ssh-status ${mount.status}` }, statuses[mount.status])),
+        renaming && h('form', { className: 'dsh-ssh-rename', onSubmit: submitRename },
+          h('input', { value: draft, maxLength: 80, autoFocus: true, disabled,
+            'aria-label': `工作区名称（${mount.alias}）`, placeholder: '工作区名称',
+            onChange: (e) => setDraft(e.target.value) }),
+          h('button', { type: 'submit', className: 'dsh-ssh-primary', disabled: disabled || !draft.trim() }, '保存'),
+          h('button', { type: 'button', disabled, onClick: () => setRenaming(false) }, '取消')),
+        h('p', { className: 'dsh-ssh-path' }, mount.remoteDir || (mount.orphaned ? `本地占位目录：${mount.localDir}` : '')),
+        mount.message && h('p', { className: 'dsh-ssh-error' }, friendly(new Error(mount.message))),
+        mount.orphaned && h('p', { className: 'dsh-ssh-muted' }, `请在上方重新选择 ${mount.alias || '对应服务器'} 和远程目录后连接；连接时会复用这个工作区。`),
+        h('div', { className: 'dsh-ssh-actions' },
+          h('button', { className: 'dsh-ssh-primary', disabled: disabled || mount.orphaned, onClick: () => run(`open:${mount.localDir}`, async (signal) => {
+            await api('check', { local_path: mount.localDir }, signal);
+            await openWorkspace(mount.localDir, signal);
+          }) }, busy === `open:${mount.localDir}` ? '打开中…' : '新对话'),
+          h('button', { disabled: disabled || mount.orphaned || !mount.workspaceId,
+            onClick: () => { setDraft(mount.name); setRenaming(true); } }, '重命名'),
+          h('button', { disabled: disabled || mount.orphaned, onClick: () => run(`check:${mount.localDir}`, async (signal) => {
+            await api('check', { local_path: mount.localDir }, signal); await refresh(signal);
+          }) }, busy === `check:${mount.localDir}` ? '检查中…' : mount.status === 'disconnected' ? '重新连接' : '检查连接'),
+          h('button', { disabled: disabled || mount.orphaned, onClick: () => {
+            setPrompt({ path: mount.localDir }); setPromptPassword('');
+          } }, mount.hasPassword ? '修改密码' : '输入密码'),
+          h('button', { disabled, onClick: () => setConfirm({ path: mount.localDir, action: 'disconnect' }) }, '断开'),
+          h('button', { disabled, className: 'dsh-ssh-danger', onClick: () => setConfirm({ path: mount.localDir, action: 'remove' }) }, '移除工作区')),
+        mount.checkedAt && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 10 } }, `上次检查：${new Date(mount.checkedAt).toLocaleString()}`),
+        prompt?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
+          h('p', { className: 'dsh-ssh-muted' }, `输入 ${mount.alias} 的密码，保存在本机后会立即重试连接。`),
+          h('input', { type: 'password', value: promptPassword, disabled, autoComplete: 'new-password',
+            placeholder: '密码', 'aria-label': `${mount.alias} 的密码`, style: { marginBottom: 12 },
+            onChange: (e) => setPromptPassword(e.target.value) }),
+          h('div', { className: 'dsh-ssh-actions' },
+            h('button', { className: 'dsh-ssh-primary', disabled: disabled || promptPassword.length === 0,
+              onClick: () => run(`check:${mount.localDir}`, async (signal) => {
+                await api('check', { local_path: mount.localDir, password: promptPassword }, signal);
+                setPrompt(null); setPromptPassword('');
+                await refresh(signal);
+                setNotice('密码已保存到本机，正在重新连接这台服务器。');
+              }) }, busy === `check:${mount.localDir}` ? '重试中…' : '保存密码并重试'),
+            h('button', { disabled, onClick: () => { setPrompt(null); setPromptPassword(''); } }, '取消'))),
+        confirm?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
+          h('p', { className: 'dsh-ssh-muted' }, confirm.action === 'remove'
+            ? '将移除工作区并归档其中的会话，历史记录和远程文件会保留。已进入“未分组”的相关会话也会归档。请先结束正在运行的任务。'
+            : '断开会移除这个远程工作区的连接。请先结束其中正在进行的任务；服务器上的文件会保留。'),
+          h('div', { className: 'dsh-ssh-actions' }, h('button', { className: 'dsh-ssh-danger', disabled,
+            onClick: () => run(`${confirm.action}:${mount.localDir}`, async (signal) => {
+              const action = confirm.action;
+              await api(action, { local_path: mount.localDir }, signal); setConfirm(null);
+              await refresh(signal);
+              setNotice(action === 'remove' ? '工作区已移除，会话已归档，远程文件已保留。' : '已断开连接，远程文件已保留。');
+            }) }, busy === `${confirm.action}:${mount.localDir}` ? '处理中…' : confirm.action === 'remove' ? '确认移除并归档' : '确认断开'),
+            h('button', { disabled, onClick: () => setConfirm(null) }, '取消'))));
+    }
+    function ServerSection({ server, disabled, busy, run, statuses, api,
+      openWorkspace, refresh, renameWorkspace, prompt, setPrompt, confirm, setConfirm,
+      promptPassword, setPromptPassword, setNotice }) {
+      const [expanded, setExpanded] = useState(true);
+      const checkable = server.workspaces.filter((mount) => !mount.orphaned);
+      const checkAll = () => run(`checkall:${server.alias}`, async (signal) => {
+        for (const mount of checkable) await api('check', { local_path: mount.localDir }, signal);
+        await refresh(signal);
+        setNotice(`已检查 ${server.alias} 的 ${checkable.length} 个工作区。`);
+      });
+      return h('section', { className: 'dsh-ssh-server' },
+        h('div', { className: 'dsh-ssh-server-head', role: 'button', tabIndex: 0, 'aria-expanded': expanded,
+          onClick: () => setExpanded((value) => !value),
+          onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded((value) => !value); } } },
+          h(Chevron, { open: expanded }),
+          h('div', { className: 'dsh-ssh-host' }, h(Icon), h('span', { className: 'dsh-ssh-server-name' }, server.alias)),
+          server.hostname !== server.alias && h('span', { className: 'dsh-ssh-hostname-text' }, server.hostname),
+          server.hasPassword && h('span', { className: 'dsh-ssh-remote-dot', title: '已保存密码', 'aria-label': '已保存密码' }),
+          h('span', { style: { flex: 1 } }),
+          h('span', { className: `dsh-ssh-status ${server.status}` }, statuses[server.status]),
+          checkable.length > 0 && h('button', { disabled, 'aria-label': `检查 ${server.alias} 的全部工作区`,
+            onClick: (e) => { e.stopPropagation(); checkAll(); } },
+            busy === `checkall:${server.alias}` ? '检查中…' : '检查全部')),
+        expanded && h('div', { className: 'dsh-ssh-server-body' }, server.workspaces.map((mount) =>
+          h(WorkspaceNode, { key: mount.localDir, mount, disabled, busy, run, statuses, api,
+            openWorkspace, refresh, renameWorkspace, prompt, setPrompt, confirm, setConfirm,
+            promptPassword, setPromptPassword, setNotice }))));
+    }
+    function ServerTree({ servers, disabled, busy, run, statuses, api,
+      openWorkspace, refresh, renameWorkspace, prompt, setPrompt, confirm, setConfirm,
+      promptPassword, setPromptPassword, setNotice }) {
+      if (!servers.length) return h('div', { className: 'dsh-ssh-empty' }, h(Icon, { size: 30 }),
+        h('strong', null, '还没有远程工作区'), h('p', { className: 'dsh-ssh-muted' }, '选择服务器和远程目录，建立第一个连接。'));
+      return h('div', { className: 'dsh-ssh-tree' }, servers.map((server) =>
+        h(ServerSection, { key: server.alias, server, disabled, busy, run, statuses, api,
+          openWorkspace, refresh, renameWorkspace, prompt, setPrompt, confirm, setConfirm,
+          promptPassword, setPromptPassword, setNotice })));
+    }
+    function RemotePanel({ api, openWorkspace, renameWorkspace, subscribeWorkspaces }) {
+      const [snapshot, setSnapshot] = useState({ hosts: [], mounts: [], warnings: [], servers: [] });
       const [selection, setSelection] = useState({ host: '', path: '', name: '' });
       const { host, path, name } = selection;
       const setPath = (path) => setSelection((current) => ({ ...current, path, name: '' }));
@@ -269,9 +675,16 @@ window.__ModuleLoader__.load({
       const refreshId = useRef(0);
       const refresh = async (signal) => {
         const id = ++refreshId.current;
-        const next = await api('list', undefined, signal);
+        const [next, tree] = await Promise.all([
+          api('list', undefined, signal),
+          // A tree hiccup keeps the last good hierarchy instead of blanking the panel.
+          api('tree', undefined, signal).catch((error) => {
+            if (!signal?.aborted) console.warn('[dsh-ssh-remote] tree refresh failed:', error);
+            return null;
+          }),
+        ]);
         if (signal?.aborted || id !== refreshId.current) return;
-        setSnapshot(next);
+        setSnapshot((current) => ({ ...next, servers: tree?.servers ?? current.servers }));
         setHost((current) => next.hosts.some((entry) => entry.alias === current) ? current : next.hosts[0]?.alias ?? '');
       };
       useEffect(() => {
@@ -318,45 +731,47 @@ window.__ModuleLoader__.load({
         });
       }
       const selectedHost = snapshot.hosts.find((entry) => entry.alias === host);
-      const statuses = { connected: '可连接', saved: '待检查', error: '连接失败' };
+      const statuses = { connected: '可连接', saved: '待检查', disconnected: '已断开', error: '连接失败' };
       return h('section', { className: 'dsh-ssh-page', 'aria-label': '远程工作区' },
         h('style', null, CSS),
         h('div', { className: 'dsh-ssh-inner' },
           h('header', { className: 'dsh-ssh-header' }, h('div', null,
             h('div', { className: 'dsh-ssh-kicker' }, h(Icon, { size: 14 }), 'SSH'),
-            h('h1', null, '远程工作区'), h('p', { className: 'dsh-ssh-muted' }, '连接服务器，在远程项目中继续工作。')),
+            h('h1', null, '远程工作区'), h('p', { className: 'dsh-ssh-muted' }, '连接服务器，在远程目录中继续工作。')),
             h('button', { disabled, onClick: () => run('refresh', refresh), 'aria-label': '刷新服务器和工作区' }, busy === 'refresh' ? '刷新中…' : '刷新')),
           error && h('div', { className: 'dsh-ssh-error', role: 'alert' }, error),
           notice && h('div', { className: 'dsh-ssh-notice', role: 'status' }, notice),
           h('form', { className: 'dsh-ssh-card', onSubmit: connect },
-            h('h2', null, '连接远程项目'),
+            h('h2', null, '连接远程目录'),
             h('div', { className: 'dsh-ssh-grid' },
               h('label', { className: 'dsh-ssh-field' }, '服务器',
                 h('select', { value: host, onChange: (e) => setHost(e.target.value), disabled: disabled || !snapshot.hosts.length, required: true },
                   !snapshot.hosts.length && h('option', { value: '' }, loading ? '正在读取服务器…' : '未找到 SSH 服务器'),
                   snapshot.hosts.map((entry) => h('option', { value: entry.alias, key: entry.alias },
                     entry.hasPassword ? `${entry.alias} · 密码已保存` : entry.alias))),
-                h('span', { className: 'dsh-ssh-muted' }, snapshot.hosts.find(entry => entry.alias === host)?.hostname ?? '')),
-              h('div', { className: 'dsh-ssh-field' }, h('span', { id: 'dsh-ssh-directory-label' }, '远程项目目录'),
-                h('button', { type: 'button', className: 'dsh-ssh-picker', disabled: disabled || !host,
-                  'aria-label': path ? `更改目录 ${path}` : '选择远程目录', onClick: () => setPicker(true), title: path },
-                  h(Folder), h('span', null, path || '选择服务器上的文件夹…')))),
-            h('label', { className: 'dsh-ssh-field dsh-ssh-name-field' }, '工作区名称',
-              h('input', { value: name, maxLength: 80, disabled, placeholder: path.split('/').filter(Boolean).pop() || '默认使用项目文件夹名称',
-                onChange: (e) => setSelection(current => ({ ...current, name: e.target.value })) })),
-            h('label', { className: 'dsh-ssh-field dsh-ssh-name-field' },
-              h('span', null, '密码 ', h('span', { className: 'dsh-ssh-optional' }, '（密码登录的服务器才需要，留空则使用密钥或代理）')),
-              h('input', { ref: passwordField, type: 'password', value: password, disabled, autoComplete: 'new-password',
-                className: passwordNeeded ? 'dsh-ssh-needed' : undefined,
-                placeholder: passwordNeeded ? '这台服务器需要密码，输入后点击「连接并打开」' : '仅用于这台服务器，保存在本机',
-                onChange: (e) => { setPassword(e.target.value); setPasswordNeeded(false); } })),
-            selectedHost?.hasPassword === true && h('p', { className: 'dsh-ssh-muted dsh-ssh-password-note' },
+                (() => { const chosen = snapshot.hosts.find(entry => entry.alias === host);
+                  return chosen && chosen.hostname !== host ? h('span', { className: 'dsh-ssh-muted' }, chosen.hostname) : null; })()),
+              h('label', { className: 'dsh-ssh-field' },
+                h('span', null, '密码 ', h('span', { className: 'dsh-ssh-optional' }, '（密码登录的服务器才需要，留空则使用密钥或代理）')),
+                h('input', { ref: passwordField, type: 'password', value: password, disabled, autoComplete: 'new-password',
+                  className: passwordNeeded ? 'dsh-ssh-needed' : undefined,
+                  placeholder: passwordNeeded ? '这台服务器需要密码，输入后点击「连接并打开」' : undefined,
+                  onChange: (e) => { setPassword(e.target.value); setPasswordNeeded(false); } }))),
+            selectedHost?.hasPassword === true && h('p', { className: 'dsh-ssh-muted dsh-ssh-password-note', style: { marginTop: 12 } },
               h('span', null, '已保存这台服务器的密码，连接时会自动使用。'),
               h('button', { type: 'button', className: 'dsh-ssh-inline', disabled, onClick: () => run('forgetPassword', async (signal) => {
                 await api('forgetPassword', { host }, signal);
                 await refresh(signal);
                 setNotice(`已清除 ${host} 保存的密码。`);
               }) }, busy === 'forgetPassword' ? '清除中…' : '清除密码')),
+            h('label', { className: 'dsh-ssh-field dsh-ssh-name-field' }, '工作区名称',
+              h('input', { value: name, maxLength: 80, disabled, placeholder: path.split('/').filter(Boolean).pop() || '默认使用项目文件夹名称',
+                onChange: (e) => setSelection(current => ({ ...current, name: e.target.value })) })),
+            h('div', { className: 'dsh-ssh-field dsh-ssh-name-field' },
+              h('span', { id: 'dsh-ssh-directory-label' }, '远程目录'),
+              h('button', { type: 'button', className: 'dsh-ssh-picker', disabled: disabled || !host,
+                'aria-label': path ? `更改目录 ${path}` : '选择远程目录', onClick: () => setPicker(true), title: path },
+                h(Folder), h('span', null, path || '选择服务器上的文件夹…'))),
             h('div', { className: 'dsh-ssh-form-footer' },
               h('button', { type: 'submit', className: 'dsh-ssh-primary', disabled: disabled || !host || !path.trim() }, busy === 'connect' ? '连接并打开中…' : '连接并打开')),
             !loading && !snapshot.hosts.length && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 16 } }, '请先在 ~/.ssh/config 添加服务器，再点击刷新。'),
@@ -366,80 +781,30 @@ window.__ModuleLoader__.load({
           picker && h(DirectoryPicker, { api, host, initialPath: path, initialPassword: password,
             onClose: () => { setPicker(false); refresh(lifetime.current.signal).catch(() => {}); },
             onSelect: (next) => { setPath(next); setPicker(false); refresh(lifetime.current.signal).catch(() => {}); } }),
-          h('div', { className: 'dsh-ssh-section-title' }, h('h2', null, '已保存的远程工作区',
-            h('span', { className: 'dsh-ssh-count' }, snapshot.mounts.length))),
+          h('div', { className: 'dsh-ssh-section-title' }, h('h2', null, '已保存的远程工作区')),
           loading ? h('div', { className: 'dsh-ssh-empty', role: 'status' }, '正在读取工作区…') :
           !snapshot.mounts.length ? h('div', { className: 'dsh-ssh-empty' }, h(Icon, { size: 30 }),
-            h('strong', null, '还没有远程工作区'), h('p', { className: 'dsh-ssh-muted' }, '选择服务器和项目目录，建立第一个连接。')) :
-          snapshot.mounts.map((mount) => h('article', { className: 'dsh-ssh-mount', key: mount.localDir },
-            h('div', { className: 'dsh-ssh-row' }, h('div', { className: 'dsh-ssh-host' }, h(Icon), mount.name),
-              h('span', { className: `dsh-ssh-status ${mount.status}` }, statuses[mount.status])),
-            h('p', { className: 'dsh-ssh-hostname', title: `SSH · ${mount.alias}`, 'aria-label': `远程主机 ${mount.hostname.toLowerCase()}` },
-              h('span', { className: 'dsh-ssh-remote-dot', 'aria-hidden': true }),
-              h('span', { className: 'dsh-ssh-hostname-text' }, mount.hostname.toLowerCase())),
-            h('p', { className: 'dsh-ssh-path' }, mount.remoteDir),
-            mount.message && h('p', { className: 'dsh-ssh-error' }, friendly(new Error(mount.message))),
-            h('div', { className: 'dsh-ssh-actions' },
-              h('button', { className: 'dsh-ssh-primary', disabled, onClick: () => run(`open:${mount.localDir}`, async (signal) => {
-                await api('check', { local_path: mount.localDir }, signal);
-                await openWorkspace(mount.localDir, signal);
-              }) }, busy === `open:${mount.localDir}` ? '打开中…' : '打开工作区'),
-              h('button', { disabled, onClick: () => run(`check:${mount.localDir}`, async (signal) => {
-                await api('check', { local_path: mount.localDir }, signal); await refresh(signal);
-              }) }, busy === `check:${mount.localDir}` ? '检查中…' : '检查连接'),
-              needsPassword(mount.message) && h('button', { disabled, onClick: () => {
-                setPrompt({ path: mount.localDir }); setPromptPassword('');
-              } }, mount.hasPassword ? '重新输入密码' : '输入密码'),
-              h('button', { disabled, onClick: () => setConfirm({ path: mount.localDir, action: 'disconnect' }) }, '断开'),
-              h('button', { disabled, className: 'dsh-ssh-danger', onClick: () => setConfirm({ path: mount.localDir, action: 'remove' }) }, '移除工作区')),
-            mount.checkedAt && h('p', { className: 'dsh-ssh-muted', style: { marginTop: 10 } }, `上次检查：${new Date(mount.checkedAt).toLocaleString()}`),
-            prompt?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
-              h('p', { className: 'dsh-ssh-muted' }, `输入 ${mount.alias} 的密码，保存在本机后会立即重试连接。`),
-              h('input', { type: 'password', value: promptPassword, disabled, autoComplete: 'new-password',
-                placeholder: '密码', 'aria-label': `${mount.alias} 的密码`, style: { marginBottom: 12 },
-                onChange: (e) => setPromptPassword(e.target.value) }),
-              h('div', { className: 'dsh-ssh-actions' },
-                h('button', { className: 'dsh-ssh-primary', disabled: disabled || promptPassword.length === 0,
-                  onClick: () => run(`check:${mount.localDir}`, async (signal) => {
-                    await api('check', { local_path: mount.localDir, password: promptPassword }, signal);
-                    setPrompt(null); setPromptPassword('');
-                    await refresh(signal);
-                    setNotice('密码已保存到本机，正在重新连接这台服务器。');
-                  }) }, busy === `check:${mount.localDir}` ? '重试中…' : '保存密码并重试'),
-                h('button', { disabled, onClick: () => { setPrompt(null); setPromptPassword(''); } }, '取消'))),
-            confirm?.path === mount.localDir && h('div', { className: 'dsh-ssh-confirm' },
-              h('p', { className: 'dsh-ssh-muted' }, confirm.action === 'remove'
-                ? '将移除工作区并归档其中的会话，历史记录和远程文件会保留。已进入“未分组”的相关会话也会归档。请先结束正在运行的任务。'
-                : '断开会移除这个远程工作区的连接。请先结束其中正在进行的任务；服务器上的文件会保留。'),
-              h('div', { className: 'dsh-ssh-actions' }, h('button', { className: 'dsh-ssh-danger', disabled,
-                onClick: () => run(`${confirm.action}:${mount.localDir}`, async (signal) => {
-                  const action = confirm.action;
-                  await api(action, { local_path: mount.localDir }, signal); setConfirm(null);
-                  await refresh(signal); setNotice(action === 'remove' ? '工作区已移除，会话已归档，远程文件已保留。' : '已断开连接，远程文件已保留。');
-                }) }, busy === `${confirm.action}:${mount.localDir}` ? '处理中…' : confirm.action === 'remove' ? '确认移除并归档' : '确认断开'),
-                h('button', { disabled, onClick: () => setConfirm(null) }, '取消')))))));
+            h('strong', null, '还没有远程工作区'), h('p', { className: 'dsh-ssh-muted' }, '选择服务器和远程目录，建立第一个连接。')) :
+          !snapshot.servers.length ? h('div', { className: 'dsh-ssh-empty' }, h('strong', null, '工作区层级加载失败'),
+            h('p', { className: 'dsh-ssh-muted' }, '点击右上角「刷新」重试。')) :
+          h(ServerTree, { servers: snapshot.servers, disabled, busy, run, statuses, api,
+            openWorkspace, refresh, renameWorkspace, prompt, setPrompt, confirm, setConfirm,
+            promptPassword, setPromptPassword, setNotice })));
     }
     return {
-      inject: ['slots', 'layout', 'connection', 'workspaces', 'uiWorkspace'],
+      inject: ['slots', 'layout', 'connection', 'workspaces', 'uiWorkspace', 'sessions'],
       apply(ctx) {
-        let badges;
-        let listRevision = 0;
-        let appliedListRevision = 0;
+        let sidebar;
         const api = async (method, request, signal) => {
-          const revision = method === 'list' ? ++listRevision : 0;
           const result = await ctx.connection.rpc.call('/api', `sshRemoteUi/${method}`,
             { args: request === undefined ? {} : { request } }, signal);
           if (!result.ok) throw new Error(result.error.message);
-          if (method === 'list' && revision >= appliedListRevision) {
-            appliedListRevision = revision;
-            badges?.update(result.value);
-          }
-          if (['connect', 'open', 'check', 'disconnect', 'remove'].includes(method)) badges?.refresh();
+          if (['connect', 'open', 'check', 'disconnect', 'remove'].includes(method)) sidebar?.refresh();
           return result.value;
         };
         ctx.effect(() => {
-          badges = installWorkspaceBadges(ctx, api);
-          return () => { badges.dispose(); badges = undefined; };
+          sidebar = installRemoteSidebar(ctx, api, PANEL);
+          return () => { sidebar.dispose(); sidebar = undefined; };
         });
         const openWorkspace = async (localDir, signal) => {
           signal?.throwIfAborted();
@@ -448,7 +813,10 @@ window.__ModuleLoader__.load({
           await ctx.uiWorkspace.openWorkspace(workspace.workspaceId);
         };
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL,
-          inject: () => ({ api, openWorkspace, subscribeWorkspaces: (listener) => ctx.workspaces.list.subscribe(listener) }) }, RemotePanel));
+          inject: () => ({ api, openWorkspace,
+            renameWorkspace: (workspaceId, title) => ctx.workspaces.rename(workspaceId, title),
+            subscribeWorkspaces: (listener) => ctx.workspaces.list.subscribe(listener) }) },
+          RemotePanel));
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist',
           id: PANEL, order: -10, label: '远程工作区' }, Icon));
       },
