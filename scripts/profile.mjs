@@ -1,8 +1,18 @@
 #!/usr/bin/env node
-/** Install through DSH's package manager; migrate the former profile-local loader. */
+/**
+ * Register/unregister this plugin with DSH's native plugin manager.
+ *
+ * Installation is packaged by default: `npm pack` produces a tarball under
+ * `<DSH_HOME>/plugin-packages`, and DSH installs that copy into its profile.
+ * The source checkout can then be moved or deleted. Pass `--link` for the
+ * development workflow that symlinks this checkout instead.
+ *
+ * The installer also migrates the former profile-local loader when it finds
+ * one, preserving its custom SSH configuration.
+ */
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -97,11 +107,54 @@ function linkTarget(path) {
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 
+/** Whether a recorded dependency was installed from this checkout or our tarball. */
+function isOwnPackageSpec(base, spec, pluginDir = source) {
+  if (typeof spec !== 'string') return false;
+  if (spec.startsWith('link:')) {
+    try { return resolve(spec.slice('link:'.length)) === pluginDir; }
+    catch { return false; }
+  }
+  if (spec.startsWith('file:')) {
+    try {
+      const tarball = resolve(spec.slice('file:'.length));
+      const name = basename(tarball);
+      return dirname(tarball) === join(base, 'plugin-packages')
+        && name.startsWith(`${packageName}-`) && name.endsWith('.tgz');
+    } catch { return false; }
+  }
+  return false;
+}
+
+/** Build a tarball DSH can install without retaining this checkout. */
+function packPlugin(base, pluginDir) {
+  const destination = join(base, 'plugin-packages');
+  mkdirSync(destination, { recursive: true, mode: 0o755 });
+  const npm = process.env.NPM_CLI ?? 'npm';
+  const result = spawnSync(npm, ['pack', pluginDir, '--pack-destination', destination, '--json'], {
+    env: process.env,
+    encoding: 'utf8',
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`npm pack failed${result.error ? `: ${result.error.message}` : ` (exit ${result.status})`}`);
+  }
+  let output;
+  try { output = JSON.parse(result.stdout); } catch { throw new Error('npm pack returned unreadable JSON'); }
+  const filename = output?.[0]?.filename;
+  if (typeof filename !== 'string' || filename.includes('/') || filename.includes('\\')
+    || !filename.startsWith(`${packageName}-`) || !filename.endsWith('.tgz')) {
+    throw new Error(`npm pack returned an unexpected filename: ${String(filename)}`);
+  }
+  const tarball = join(destination, basename(filename));
+  if (!existsSync(tarball)) throw new Error(`npm pack did not create ${tarball}`);
+  return tarball;
+}
+
 /** Native pnpm operations own dependency/selection bookkeeping; data files are never edited. */
 export function updateProfile(action, profile = 'desktop', base = process.env.DSH_HOME ?? join(homedir(), '.dsh'), pluginDir = source, options = {}) {
-  if (!['install', 'uninstall'].includes(action)) throw new Error('Usage: dsh-ssh-remote <install|uninstall> [profile]');
+  if (!['install', 'uninstall'].includes(action)) throw new Error('Usage: dsh-ssh-remote <install|uninstall> [profile] [--link]');
   if (action === 'install' && process.platform === 'win32') throw new Error('This plugin currently supports macOS and Linux; Windows/Pwsh is not supported.');
   if (!/^[\w.-]+$/u.test(profile) || ['.', '..', 'node_modules'].includes(profile)) throw new Error('Invalid profile name');
+  const linkInstall = options.link === true;
   base = resolve(base); pluginDir = realpathSync(pluginDir);
   const dir = join(base, 'profiles', profile), manifestPath = join(dir, 'package.json');
   if (!existsSync(manifestPath)) throw new Error(`Profile does not exist: ${dir}. Open Harness once before installing.`);
@@ -116,13 +169,16 @@ export function updateProfile(action, profile = 'desktop', base = process.env.DS
   if (action === 'install') {
     const metadata = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'));
     if (metadata.name !== packageName || !metadata.dsh?.bundle?.patch) throw new Error('Not a dsh-ssh-remote bundle');
-    if (installed && existsSync(nativeLink) && realpathSync(nativeLink) !== pluginDir) {
+    const recorded = manifest.dependencies?.[packageName];
+    if (installed && !isOwnPackageSpec(base, recorded, pluginDir)) {
       throw new Error('Plugin is installed from another location. Remove it through DSH before changing its source.');
     }
   }
   const needsNative = action === 'install' || installed || manifest.dsh?.profile?.bundles?.includes(packageName);
   const cli = needsNative ? (options.cli ?? findDshCli()) : undefined;
   const run = options.runNative ?? spawnSync;
+  let spec;
+  if (action === 'install') spec = linkInstall ? `link:${pluginDir}` : `file:${packPlugin(base, pluginDir)}`;
   const files = ['package.json', 'cordis.patch.yml', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
   const backup = join(dir, '.ssh-remote-backups', `${Date.now()}-${randomUUID().slice(0, 8)}`);
   mkdirSync(backup, { recursive: true, mode: 0o700 });
@@ -132,12 +188,19 @@ export function updateProfile(action, profile = 'desktop', base = process.env.DS
   const previousNativeLink = existsSync(nativeLink) && lstatSync(nativeLink).isSymbolicLink() ? readlinkSync(nativeLink) : undefined;
   try {
     if (needsNative) {
-      const args = ['plugin', '--profile', profile, ...(action === 'install' ? ['add', `link:${pluginDir}`] : ['remove', packageName])];
+      const args = ['plugin', '--profile', profile, ...(action === 'install' ? ['add', spec] : ['remove', packageName])];
       const result = run(cli, args, { env: { ...process.env, DSH_HOME: base }, stdio: 'inherit' });
       if (result.error || result.status !== 0) throw new Error(`DSH native ${action} failed${result.error ? `: ${result.error.message}` : ` (exit ${result.status})`}`);
       const after = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      if (action === 'install' && (!Object.hasOwn(after.dependencies ?? {}, packageName) || !existsSync(nativeLink) || realpathSync(nativeLink) !== pluginDir)) {
+      if (action === 'install' && (!Object.hasOwn(after.dependencies ?? {}, packageName) || !existsSync(nativeLink))) {
         throw new Error('DSH did not register the plugin dependency');
+      }
+      if (action === 'install' && linkInstall && realpathSync(nativeLink) !== pluginDir) {
+        throw new Error('DSH did not register the development link');
+      }
+      if (action === 'install') {
+        const installedMetadata = JSON.parse(readFileSync(join(nativeLink, 'package.json'), 'utf8'));
+        if (installedMetadata.name !== packageName) throw new Error('DSH installed an unexpected plugin package');
       }
       if (action === 'install' && !installed && !after.dsh?.profile?.bundles?.includes(packageName)) throw new Error('DSH did not enable the installed bundle');
       if (action === 'uninstall' && (Object.hasOwn(after.dependencies ?? {}, packageName) || after.dsh?.profile?.bundles?.includes(packageName))) {
@@ -162,14 +225,26 @@ export function updateProfile(action, profile = 'desktop', base = process.env.DS
     }
     throw new Error(`${error.message}. Profile files restored; backup: ${backup}`, { cause: error });
   }
-  return { profile: dir, source: pluginDir, backup, action, migrated: migration.migrated };
+  return { profile: dir, source: pluginDir, backup, action, spec, migrated: migration.migrated };
 }
 
 if (process.argv[1] && existsSync(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const result = updateProfile(process.argv[2], process.argv[3] ?? process.env.DSH_PROFILE ?? 'desktop');
+    const args = process.argv.slice(2);
+    const flags = args.filter(argument => argument.startsWith('-'));
+    const unknown = flags.filter(flag => flag !== '--link');
+    if (unknown.length > 0) throw new Error(`Unknown option${unknown.length === 1 ? '' : 's'}: ${unknown.join(', ')}`);
+    const action = args[0] ?? 'install';
+    const profile = args.slice(1).find(argument => !argument.startsWith('-'))
+      ?? process.env.DSH_PROFILE ?? 'desktop';
+    const result = updateProfile(action, profile, undefined, undefined, { link: flags.includes('--link') });
     console.log(`${result.action === 'install' ? 'Installed through DSH' : 'Uninstalled'} dsh-ssh-remote: ${result.profile}`);
     if (result.migrated) console.log('Migrated legacy loader; custom SSH configuration preserved.');
+    if (result.action === 'install') {
+      console.log(result.spec.startsWith('link:')
+        ? `Development link: ${result.spec.slice('link:'.length)} (keep the checkout in place)`
+        : `Packaged copy: ${result.spec.slice('file:'.length)} (the checkout may be moved or deleted)`);
+    }
     console.log(`Backup: ${result.backup}`);
     console.log('Restart DeepSeek Harness. Manage the plugin from its Plugins page. SSH settings, passwords and workspace data are preserved.');
   } catch (error) { console.error(error.message); process.exitCode = 1; }

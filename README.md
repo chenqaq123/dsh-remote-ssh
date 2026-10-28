@@ -71,7 +71,24 @@ ssh dev-server
 
 ### 从 GitHub 安装（推荐）
 
-先启动一次 Harness，使 `desktop` 配置目录存在，然后**完全退出 Harness**。将插件克隆到希望长期保留的位置：
+先启动一次 Harness，使 `desktop` 配置目录存在，然后**完全退出 Harness**。直接让 DSH 从 GitHub 安装插件：
+
+```sh
+dsh plugin --profile desktop add github:chenqaq123/dsh-remote-ssh
+```
+
+macOS 如果找不到 `dsh` 命令，可以使用应用内自带的 CLI：
+
+```sh
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add github:chenqaq123/dsh-remote-ssh
+```
+
+安装完成后重新打开 Harness，在「插件 → 已安装」中管理 `dsh-ssh-remote`。停用插件并重启后，本地文件系统和终端后端会恢复。
+
+### 从源码安装
+
+如果需要从当前 checkout 安装，将插件克隆到希望长期保留的位置：
 
 ```sh
 git clone https://github.com/chenqaq123/dsh-remote-ssh.git
@@ -80,13 +97,19 @@ npm install --omit=dev --ignore-scripts
 node scripts/profile.mjs install desktop
 ```
 
-安装器调用 DSH 原生的 `dsh plugin --profile desktop add link:<插件绝对路径>`，由 DSH 登记依赖并启用插件包。重新打开 Harness 后，可在「插件 → 已安装」中看到 `dsh-ssh-remote`，查看状态、启用或停用。停用后重启，本地文件与终端后端会恢复。桌面版的卸载若提示先停止配置，请完全退出 Harness，再运行下方卸载命令。
+默认安装会先执行 `npm pack`，把 tarball 写入 `~/.dsh/plugin-packages/`，再让 DSH 通过 `file:` 依赖安装。因此安装完成后可以移动或删除源码目录。需要实时调试源码时才使用链接模式：
 
-macOS 安装器优先使用桌面应用自带的 CLI；其他环境会从 PATH 查找 `dsh`。可用 `DSH_CLI=/绝对路径/dsh` 指定命令，`DSH_HOME` 指定配置根目录。链接安装要求保留源码目录；不要在安装后移动或删除它。
+```sh
+node scripts/profile.mjs install desktop --link
+```
+
+链接模式会把当前 checkout 注册为 `link:` 依赖，调试期间必须保留源码目录。
+
+macOS 安装器优先使用桌面应用自带的 CLI；其他环境会从 PATH 查找 `dsh`。可用 `DSH_CLI=/绝对路径/dsh` 指定命令，`DSH_HOME` 指定 DSH 配置根目录。
 
 ### 迁移旧安装
 
-使用过旧版 `scripts/install.sh` 或 `scripts/profile.mjs` 的用户，在当前源码目录安装依赖后，完全退出 Harness，再运行同一安装命令即可：
+使用过旧版 `scripts/install.sh` 或 `scripts/profile.mjs` 的用户，在当前源码目录安装依赖后，完全退出 Harness，再运行默认的打包安装命令即可：
 
 ```sh
 npm install --omit=dev --ignore-scripts
@@ -97,28 +120,23 @@ node scripts/profile.mjs install desktop
 
 每次操作前，配置文件备份写入当前配置目录的 `.ssh-remote-backups/<时间戳>/`，目录仅当前用户可访问；原生命令失败时会恢复配置文件。发现不完整、重复或未知的旧加载区块时，安装器会停止而不修改配置。
 
-### 作为 npm 包安装
-
-也可从 GitHub 安装全局命令：
-
-```sh
-npm install -g --install-links git+https://github.com/chenqaq123/dsh-remote-ssh.git
-dsh-ssh-remote install desktop
-```
-
-全局 npm 安装只提供插件源码与安装命令；必须运行第二条命令，才能登记到 DSH 原生插件管理中。
-
 ### 更新与卸载
 
-完全退出 Harness，更新源码及依赖或全局 npm 包，再重新运行安装命令并启动 Harness。重新安装会保留已存在的原生停用状态。
+从 GitHub 安装的用户重新执行上面的 `dsh plugin ... add github:...` 命令即可更新。源码安装的用户完全退出 Harness 后，在当前源码目录重新运行 `node scripts/profile.mjs install desktop`；重新安装会保留已存在的原生停用状态。
 
-卸载 GitHub 源码安装：
+通过 DSH 卸载：
+
+```sh
+dsh plugin --profile desktop remove dsh-ssh-remote
+```
+
+源码安装也可以运行：
 
 ```sh
 node scripts/profile.mjs uninstall desktop
 ```
 
-全局包安装可运行 `dsh-ssh-remote uninstall desktop`，再卸载 npm 包。安装器通过 DSH 原生命令删除插件依赖与启用记录，也支持清理旧安装；保留 SSH 配置覆盖、密码、工作区数据和服务器文件。
+卸载只移除插件依赖与启用记录，保留 SSH 配置覆盖、密码、挂载、工作区和服务器文件。
 
 ## 移除远程工作区
 
