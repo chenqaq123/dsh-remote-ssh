@@ -76,370 +76,228 @@ window.__ModuleLoader__.load({
      * groups are hidden in the native list through generated CSS rules only.
      */
     const SIDEBAR_CSS = `
-      .dsh-sb{flex:none;display:flex;flex-direction:column;min-height:0;max-height:52%;margin-top:6px;padding-top:4px;border-top:1px solid color-mix(in srgb,currentColor 10%,transparent)}
-      .dsh-sb-head{display:flex;align-items:center;gap:6px;padding:6px;border:0;background:none;color:inherit;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;opacity:.82;border-radius:6px}
-      .dsh-sb-head:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 7%,transparent))}
-      .dsh-sb-manage{margin-left:auto;font-size:11px;font-weight:400;opacity:.55;border:0;background:none;color:inherit;cursor:pointer;padding:2px 4px;border-radius:4px}
-      .dsh-sb-manage:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 7%,transparent))}
-      .dsh-sb-body{overflow:auto;min-height:0;padding:2px 0 6px}
-      .dsh-sb-row{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;color:inherit;font:inherit;font-size:13px;text-align:left;padding:4px 6px;border-radius:6px;cursor:pointer;min-height:26px;min-width:0}
-      .dsh-sb-row:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 7%,transparent))}
-      .dsh-sb-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .dsh-sb-server>.dsh-sb-row{font-weight:600}
-      .dsh-sb-server>.dsh-sb-body{padding-left:6px}
-      .dsh-sb-workspace{padding-left:6px}
-      .dsh-sb-workspace>.dsh-sb-body{padding-left:8px}
-      .dsh-sb-workspace-title{opacity:.9}
-      .dsh-sb-conv{padding-left:20px;opacity:.85}
-      .dsh-sb-conv.archived{opacity:.42}
-      .dsh-sb-dot{width:6px;height:6px;border-radius:50%;flex:none;background:#86efac}
-      .dsh-sb-dot.saved{background:#e2b93b}.dsh-sb-dot.error{background:#e56767}.dsh-sb-dot.disconnected{background:#8a8f98}
-      .dsh-sb-chev{flex:none;width:18px;text-align:center;opacity:.5;transition:transform .12s;display:inline-block}
-      .dsh-sb-chev.open{transform:rotate(90deg)}
-      .dsh-sb-empty{font-size:12px;opacity:.55;padding:8px;line-height:1.6}
-      .dsh-sb-new{flex:none;border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
-      .dsh-sb-new:hover{opacity:1}
-      .dsh-sb-conv-item{display:flex;align-items:center;gap:2px}
-      .dsh-sb-conv-item .dsh-sb-row{flex:1;min-width:0}
-      .dsh-sb-conv-item.archived{opacity:.42}
-      .dsh-sb-more{flex:none;border:0;background:none;color:inherit;opacity:0;cursor:pointer;font-size:14px;line-height:1;padding:0 4px;border-radius:4px}
-      .dsh-sb-conv:hover .dsh-sb-more,.dsh-sb-conv:focus-within .dsh-sb-more{opacity:.55}
-      .dsh-sb-more-always{opacity:.35}
-      .dsh-sb-more:hover{opacity:1!important;background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 8%,transparent))}
-      .dsh-sb-menu{position:fixed;z-index:9999;min-width:190px;padding:6px;border-radius:10px;background:var(--dsw-alias-bg-elevated,Canvas);color:CanvasText;border:1px solid color-mix(in srgb,currentColor 14%,transparent);box-shadow:0 12px 32px #0006;display:flex;flex-direction:column;gap:2px;font-size:13px}
-      .dsh-sb-menu button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;color:inherit;font:inherit;text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer}
-      .dsh-sb-menu button:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 8%,transparent))}
-      .dsh-sb-menu .dsh-sb-menu-danger{color:#e56767}
+      .dsh-sb{flex:none;display:flex;flex-direction:column;min-width:0;margin-top:12px;padding:0;border:0}
+      .dsh-sb-head{box-sizing:border-box;display:flex;align-items:center;gap:4px;height:36px;min-height:36px;padding:0 1px 0 12px;font:inherit;font-size:14px;font-weight:400;line-height:20px;color:var(--dsw-alias-label-tertiary,inherit)}
+      .dsh-sb-section-toggle{position:relative;display:flex;align-items:center;flex:1;min-width:0;height:28px;box-sizing:border-box;border:0;background:none;color:inherit;font:inherit;font-size:14px;font-weight:400;line-height:20px;text-align:left;padding:4px 0;cursor:pointer}
+      .dsh-sb-section-toggle>span{position:relative;left:-1px}.dsh-sb-section-toggle svg{position:absolute;left:-17px;width:14px;height:14px;transition:transform .12s}.dsh-sb-section-toggle[aria-expanded=true] svg{transform:rotate(90deg)}
+      .dsh-sb-body{min-width:0;flex:none}.dsh-sb>.dsh-sb-body{padding:2px 0 6px}
+      .dsh-sb-row{box-sizing:border-box;position:relative;display:flex;align-items:center;gap:var(--dsh-sidebar-label-gap,6px);width:100%;height:32px;padding:0 8px;padding-inline-start:calc(var(--dsh-sidebar-row-padding,12px) - var(--dsh-sidebar-paint-inset,3px) + var(--ssh-indent,0px));border-inline:var(--dsh-sidebar-paint-inset,3px) solid transparent;border-radius:var(--dsw-radius-md,12px);background-clip:padding-box;background-color:transparent;color:var(--dsw-alias-label-primary,inherit);font:inherit;font-size:14px;font-weight:400;cursor:pointer;min-width:0;outline:none;user-select:none}
+      .dsh-sb-row:hover,.dsh-sb-row:focus-visible,.dsh-sb-row.menu-open,.dsh-sb-row.current{background-color:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,currentColor 8%,transparent))}
+      .dsh-sb-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px}
+      .dsh-sb-leading{position:relative;display:inline-flex;justify-content:center;align-items:center;flex:none;width:16px;height:20px;padding:0;border:0;background:none;color:var(--dsw-alias-label-tertiary,inherit);cursor:pointer}
+      .dsh-sb-leading>svg{width:16px;height:16px}.dsh-sb-leading>.dsh-sb-chevron{display:none;width:14px;height:14px}.dsh-sb-chevron.open{transform:rotate(90deg)}
+      .dsh-sb-row:hover .dsh-sb-folder,.dsh-sb-row:focus-within .dsh-sb-folder{display:none}.dsh-sb-row:hover .dsh-sb-chevron,.dsh-sb-row:focus-within .dsh-sb-chevron{display:block}
+      .dsh-sb-dot{position:absolute;bottom:0;right:-2px;width:5px;height:5px;border-radius:50%;background:#86efac;box-shadow:0 0 0 2px var(--dsw-alias-bg-base,#1e1e2e)}.dsh-sb-dot.error{background:#e56767}
+      .dsh-sb-actions{flex:none;display:none;align-items:center;gap:13px;height:20px}.dsh-sb-row:hover .dsh-sb-actions,.dsh-sb-row:focus-within .dsh-sb-actions,.dsh-sb-row.menu-open .dsh-sb-actions{display:inline-flex}
+      .dsh-sb-icon{display:inline-flex;justify-content:center;align-items:center;flex:none;width:24px;height:24px;margin:-4px;padding:0;border:0;border-radius:var(--dsw-radius-xs,4px);background:none;color:var(--dsw-alias-label-tertiary,inherit);font:inherit;font-size:13.3333px;cursor:pointer}
+      .dsh-sb-icon svg{width:16px;height:16px}.dsh-sb-icon svg[data-icon=dsw-icon-new-chat-outline-regular]{width:14px;height:14px}.dsh-sb-icon:hover,.dsh-sb-icon:focus-visible{color:var(--dsw-alias-label-primary,inherit)}.dsh-sb-icon.connected{color:#86efac}
+      .dsh-sb-head>.dsh-sb-icon{width:28px;height:28px;margin:0}
+      .dsh-sb-session-row{gap:0;padding-inline-start:calc(var(--dsh-sidebar-row-padding,12px) - var(--dsh-sidebar-paint-inset,3px) + 16px + var(--dsh-sidebar-label-gap,6px) + var(--ssh-indent,0px))}
+      .dsh-sb-session-row .dsh-sb-title{margin-right:6px}.dsh-sb-time{flex:none;font-size:10px;line-height:16px;color:var(--dsw-alias-label-tertiary,inherit)}.dsh-sb-session-row:hover .dsh-sb-time,.dsh-sb-session-row:focus-within .dsh-sb-time,.dsh-sb-session-row.menu-open .dsh-sb-time{display:none}
+      .dsh-ssh-flat-menu [data-context-menu] [role=separator]{display:none}
+      .dsh-sb-empty{padding:8px 12px;font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary,inherit)}
       .dsh-sb-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:10000;max-width:420px;padding:9px 14px;border-radius:8px;background:var(--dsw-alias-bg-elevated,Canvas);color:CanvasText;border:1px solid color-mix(in srgb,currentColor 14%,transparent);box-shadow:0 10px 28px #0005;font-size:12px;line-height:1.5}
-      .dsh-sb-rename{padding:2px 6px}
-      .dsh-sb-rename input{width:100%;height:26px;border-radius:6px;border:1px solid color-mix(in srgb,currentColor 22%,transparent);background:Canvas;color:CanvasText;font:inherit;padding:0 6px;box-sizing:border-box}
+      .dsh-sb-confirm{width:360px;max-width:calc(100vw - 40px);padding:24px;box-sizing:border-box;border:1px solid color-mix(in srgb,currentColor 14%,transparent);border-radius:16px;background:var(--dsw-alias-bg-elevated,#272735);color:var(--dsw-alias-label-primary,#cdd6f4);font:inherit;box-shadow:0 16px 60px #0006}.dsh-sb-confirm::backdrop{background:#0007}.dsh-sb-confirm h2{font-size:17px;margin:0 0 16px}.dsh-sb-confirm p{font-size:13px;line-height:1.6;overflow-wrap:anywhere}.dsh-sb-error{color:#e56767}.dsh-sb-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:24px}.dsh-sb-confirm-actions button{padding:7px 14px;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px;cursor:pointer}.dsh-sb-confirm-actions .danger{background:#c64747;color:white;border-color:#c64747}
+      @media(hover:none){.dsh-sb-actions{display:inline-flex}.dsh-sb-time{display:none}}
     `;
     function installRemoteSidebar(ctx, api, PANEL) {
       const style = document.createElement('style'); style.textContent = SIDEBAR_CSS;
-      const hide = document.createElement('style');
-      document.head.append(style, hide);
-      const host = document.createElement('div');
-      host.className = 'dsh-sb';
-      host.setAttribute('aria-label', '远程工作区');
-      let tree = { servers: [] };
-      let collapsedServers = new Set();
-      let collapsedWorkspaces = new Set();
-      // The whole remote section starts collapsed; expanding it shows every
-      // server and workspace directory in its normal expanded state.
-      let sectionCollapsed = true;
-      let disposed = false;
-      let busy = false;
-      let loaded = false;
-      let frame;
-      let editing = null;
-      let menu;
-      const sessions = () => ctx.sessions?.list?.getSnapshot?.()?.byId ?? {};
-      const key = (alias, name) => `${alias}\u0000${name}`;
-      const el = (tag, className, text) => {
-        const node = document.createElement(tag);
-        if (className) node.className = className;
-        if (text !== undefined) node.textContent = text;
-        return node;
-      };
-      const chev = (open) => el('span', `dsh-sb-chev${open ? ' open' : ''}`, '›');
-      const warn = (label, error) => console.warn(`[dsh-ssh-remote] ${label}:`, error);
-      let toast;
-      function notify(message) {
-        toast?.remove();
-        toast = el('div', 'dsh-sb-toast', message);
-        toast.setAttribute('role', 'status');
-        document.body.append(toast);
-        setTimeout(() => { toast?.remove(); toast = undefined; }, 4000);
-      }
-      function closeMenu() {
-        menu?.remove(); menu = undefined;
-        document.removeEventListener('pointerdown', outsideMenu, true);
-        document.removeEventListener('keydown', menuKey, true);
-      }
-      function outsideMenu(event) { if (menu && !menu.contains(event.target)) closeMenu(); }
-      function menuKey(event) { if (event.key === 'Escape') closeMenu(); }
-      function openMenu(x, y, items) {
-        closeMenu();
-        menu = el('div', 'dsh-sb-menu');
-        for (const item of items) {
-          const button = el('button', item.danger ? 'dsh-sb-menu-danger' : '', item.label);
-          button.type = 'button';
-          button.addEventListener('click', () => {
-            closeMenu();
-            Promise.resolve().then(item.run).catch((error) => { warn(item.label, error); notify(`${item.label}失败：${error?.message ?? error}`); });
-          });
-          menu.append(button);
-        }
-        document.body.append(menu);
-        const rect = menu.getBoundingClientRect();
-        menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
-        menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
-        document.addEventListener('pointerdown', outsideMenu, true);
-        document.addEventListener('keydown', menuKey, true);
-      }
-      async function renameSession(id, title) {
-        const result = await ctx.sessions.using(id, { source: 'workspaceOperation' }, (reference) => reference.binding.session.rename(title));
-        if (!result.ok) throw new Error(result.error.message);
-        await refresh();
-      }
-      function commitEdit() {
-        const current = editing;
-        editing = null;
-        if (!current) return;
-        const title = current.value.trim();
-        if (!title) { render(); return; }
-        const done = current.kind === 'workspace'
-          ? ctx.workspaces.rename(current.id, title).then(refresh)
-          : renameSession(current.id, title);
-        done.catch((error) => warn('重命名失败', error)).finally(() => render());
-        render();
-      }
-      function startEdit(next) { editing = { ...next, value: next.value ?? '' }; render(); }
-      function restoreScroll(saved) {
-        if (!saved.size) return;
-        const apply = () => host.querySelectorAll('[data-scroll]').forEach((node) => {
-          const value = saved.get(node.getAttribute('data-scroll'));
-          if (value) node.scrollTop = value;
-        });
-        apply();
-        requestAnimationFrame(apply);
-      }
-      function hideRemote(servers) {
-        const rules = [];
-        for (const server of servers) for (const workspace of server.workspaces) {
-          if (typeof workspace.workspaceId !== 'string' || !workspace.workspaceId) continue;
-          const id = workspace.workspaceId.replace(/["\\]/gu, '');
-          rules.push(`[data-row-key="workspace:${id}"]{display:none!important}`);
-          rules.push(`*:has(> [data-row-key="workspace:${id}"]){display:none!important}`);
-          for (const conversation of workspace.conversations ?? []) {
-            const sid = String(conversation.id).replace(/["\\]/gu, '');
-            rules.push(`[data-row-key="session:${sid}"]{display:none!important}`);
+      const hide = document.createElement('style'); document.head.append(style, hide);
+      const host = document.createElement('div'); host.className = 'dsh-sb'; host.setAttribute('aria-label', '远程工作区');
+      const STATE_KEY = 'dsh-ssh-remote:sidebar-v2';
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(STATE_KEY) ?? '{}') ?? {}; } catch { /* optional storage */ }
+      let sectionCollapsed = saved.collapsed !== false;
+      const collapsedServers = new Set(Array.isArray(saved.servers) ? saved.servers : []);
+      const collapsedWorkspaces = new Set(Array.isArray(saved.workspaces) ? saved.workspaces : []);
+      const serverOrder = Array.isArray(saved.serverOrder) ? saved.serverOrder : [];
+      const workspaceOrder = Array.isArray(saved.workspaceOrder) ? saved.workspaceOrder : [];
+      let tree = { servers: [] }, disposed = false, loading = false, loaded = false, frame, toast, dialog;
+      let actionBusy = false;
+      const cm = ctx.get?.('contextMenus') ?? ctx.contextMenus;
+      const sessions = () => ctx.sessions.list.getSnapshot().byId;
+      const selection = () => ctx.uiWorkspace.selection?.getSnapshot?.().sessionId;
+      const persist = () => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ collapsed: sectionCollapsed,
+        servers: [...collapsedServers], workspaces: [...collapsedWorkspaces], serverOrder, workspaceOrder })); } catch { /* optional */ } };
+      const el = (tag, className, text) => { const e = document.createElement(tag); if (className) e.className = className; if (text !== undefined) e.textContent = text; return e; };
+      const icon = (name, size = 16) => {
+        const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('width', String(size)); svg.setAttribute('height', String(size)); svg.setAttribute('aria-hidden', 'true');
+        svg.dataset.icon = `dsw-icon-${name}`;
+        if (name === 'remote-server') {
+          svg.setAttribute('viewBox', '0 0 24 24');
+          for (const d of ['M4 3h16a1 1 0 0 1 1 1v12H3V4a1 1 0 0 1 1-1Z', 'M8 21h8M12 16v5M7 7l3 2-3 2M13 11h4']) {
+            const path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('stroke-linecap', 'round'); svg.append(path);
           }
+        } else { const use = document.createElementNS(ns, 'use'); use.setAttribute('href', `#dsw-icon-${name}`); svg.append(use); }
+        return svg;
+      };
+      const button = (name, label, run, size = 16) => {
+        const b = el('button', 'dsh-sb-icon'); b.type = 'button'; b.title = label; b.setAttribute('aria-label', label); b.append(icon(name, size));
+        b.addEventListener('click', e => { e.stopPropagation(); run(e); }); return b;
+      };
+      const time = value => { const at = typeof value === 'string' ? Date.parse(value) : Number(value); if (!Number.isFinite(at)) return '';
+        const m = Math.max(0, Math.floor((Date.now() - at) / 60000)); return m < 1 ? '刚刚' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`; };
+      const titleOf = s => s?.blank ? '新会话' : s?.title?.trim() || s?.displayTitle?.trim() || '未命名会话';
+      const workspaces = () => tree.servers.flatMap(server => server.workspaces);
+      const findWorkspace = id => workspaces().find(w => w.workspaceId === id);
+      const findSessionWorkspace = id => workspaces().find(w => (w.conversations ?? []).some(s => s.id === id));
+      const ordered = (items, order, key) => { for (const item of items) if (!order.includes(key(item))) order.push(key(item));
+        return [...items].sort((a,b) => order.indexOf(key(a)) - order.indexOf(key(b))); };
+      function notify(text) { toast?.remove(); toast = el('div', 'dsh-sb-toast', text); toast.setAttribute('role','status'); document.body.append(toast);
+        const own = toast; setTimeout(() => { own.remove(); if (toast === own) toast = undefined; }, 5000); }
+      async function run(action) { if (actionBusy) return; cm?.close(); actionBusy = true; schedule();
+        try { await action(); } catch (e) { notify(friendly(e)); } finally { actionBusy = false; await refresh(); } }
+      async function navigate(action) {
+        const list = host.closest('[class*=scrollArea]'), top = list?.scrollTop; let userInput = false;
+        const input = () => { userInput = true; };
+        const restore = () => { if (!userInput && list && top !== undefined && list.scrollTop !== top) list.scrollTop = top; };
+        for (const event of ['wheel','touchmove','pointerdown','keydown']) list?.addEventListener(event,input,{passive:true});
+        list?.addEventListener('scroll',restore);
+        try { await action(); await new Promise(r=>setTimeout(r,180)); } finally { restore(); list?.removeEventListener('scroll',restore);
+          for (const event of ['wheel','touchmove','pointerdown','keydown']) list?.removeEventListener(event,input); }
+      }
+      const openConversation = conversation => run(() => navigate(() => ctx.uiWorkspace.openSession(conversation.id)));
+      const newConversation = workspace => run(() => navigate(async () => {
+        const opened = await api('open',{local_path:workspace.localDir}); await ctx.uiWorkspace.openWorkspace(opened.workspaceId);
+      }));
+      const connectWorkspace = workspace => run(() => api(workspace.status === 'connected' ? 'disconnect' : 'check', { local_path: workspace.localDir }));
+      function openMenu(target, trigger, point) {
+        if (!cm) { notify('Harness 原生菜单尚未就绪。'); return; }
+        const active = cm.active.getSnapshot();
+        if (active?.kind === target.kind && JSON.stringify(active.value) === JSON.stringify(target.value)) { cm.close(); return; }
+        trigger.focus({preventScroll:true}); const rect = trigger.getBoundingClientRect();
+        cm.open(target,point ?? {x:rect.left,y:rect.bottom},{button:`ssh:${target.kind}:${target.value.workspaceId ?? target.value.sessionId ?? target.value.alias}`});
+      }
+      function targetOfWorkspace(w) { return {kind:'workspace',value:{workspaceId:w.workspaceId,path:w.localDir,displayTitle:w.name || w.title || w.remoteDir}}; }
+      const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
+      ctx.slots.inject('contextMenu.icon',function*(){ for(const [key,Icon] of Object.entries({
+        'ssh.link':primitives.IconLinkOutlineRegular,'ssh.new':primitives.IconNewChatOutlineRegular,
+        'ssh.settings':primitives.IconSettingsOutlineRegular,'ssh.copy':primitives.IconCopyOutlineRegular,
+      })) if(Icon) yield ctx.slots.register({name:'contextMenu.icon',key},Icon); });
+      const removeServerMenu = cm?.register({id:'ssh.sidebar-server',target:'ssh-remote-server',order:100,
+        resolve:({alias})=>{const server=tree.servers.find(s=>s.alias===alias);if(!server)return[];
+          const w=server.workspaces.find(w=>!w.orphaned);
+          return [{id:'status',label:{connected:'可连接',saved:'尚未连接',disconnected:'已断开',error:'连接失败'}[server.status],disabled:true},
+            ...(w?[{id:'connect',label:w.status==='connected'?'断开连接':'连接服务器',icon:{key:'ssh.link'},run:()=>connectWorkspace(w)}]:[]),
+            {id:'add',label:'添加远程工作区',icon:{key:'ssh.new'},run:()=>ctx.layout.selectPanel(PANEL)},
+            {id:'manage',label:'管理服务器与工作区',icon:{key:'ssh.settings'},run:()=>ctx.layout.selectPanel(PANEL)}]; }});
+      const removeWorkspaceMenu = cm?.register({id:'ssh.sidebar-workspace',target:'workspace',order:250,
+        observe:()=>[ctx.workspaces.list], resolve:({workspaceId})=>{const w=findWorkspace(workspaceId);if(!w)return[];
+          return [{id:'connect',label:w.status==='connected'?'断开连接':'连接工作区',icon:{key:'ssh.link'},disabled:w.orphaned===true,run:()=>connectWorkspace(w)},
+            {id:'new',label:'新建会话',icon:{key:'ssh.new'},disabled:w.orphaned===true,run:()=>newConversation(w)},
+            {id:'copy',label:'复制远程目录路径',icon:{key:'ssh.copy'},run:()=>navigator.clipboard.writeText(w.remoteDir)},
+            {id:'manage',label:'管理远程工作区',icon:{key:'ssh.settings'},run:()=>ctx.layout.selectPanel(PANEL)}]; }});
+      function confirmDelete(w,session) {
+        dialog?.close();dialog?.remove();const node=el('dialog','dsh-sb-confirm');dialog=node;
+        const heading=el('h2','', '删除会话？');heading.id='ssh-remove-conversation';node.setAttribute('aria-labelledby',heading.id);
+        const error=el('p','dsh-sb-error');error.setAttribute('role','alert');error.hidden=true;
+        const actions=el('div','dsh-sb-confirm-actions'),cancel=el('button','', '取消'),yes=el('button','danger','删除会话');
+        cancel.type=yes.type='button';cancel.autofocus=true;let pending=false;
+        const close=()=>{if(!pending){node.close();node.remove();if(dialog===node)dialog=undefined;}};
+        cancel.addEventListener('click',close);node.addEventListener('cancel',e=>{e.preventDefault();close();});
+        yes.addEventListener('click',async()=>{if(pending)return;if(sessions()[session.id]?.running){error.hidden=false;error.textContent='请先停止会话，再删除。';return;}
+          pending=true;cancel.disabled=yes.disabled=true;let archived=false;
+          try{await ctx.uiWorkspace.archiveSession(session.id);archived=true;await api('forgetSession',{local_path:w.localDir,session_id:session.id});await refresh();pending=false;close();}
+          catch(e){error.hidden=false;error.textContent=`${archived?'会话已归档，但移除未完成：':''}${friendly(e)}`;}
+          finally{pending=false;cancel.disabled=yes.disabled=false;}});
+        actions.append(cancel,yes);node.append(heading,el('p','',titleOf(session)),el('p','', '会话将归档并从远程工作区列表移除。Harness 历史日志和远程文件都会保留。'),error,actions);
+        document.body.append(node);node.showModal();
+      }
+      const removeDeleteMenu=cm?.register({id:'ssh.sidebar-delete-session',target:'session',order:700,
+        observe:()=>[ctx.workspaces.list,ctx.sessions.list],resolve:({sessionId})=>{const w=findSessionWorkspace(sessionId),s=sessions()[sessionId];
+          return !w||!s||s.blank?[]:[{id:'delete',label:'删除会话',danger:true,afterContent:true,disabled:s.running===true,run:()=>confirmDelete(w,s)}];}});
+      function hideRemote(servers) {
+        const rules=[];
+        for(const s of servers)for(const w of s.workspaces){if(!w.workspaceId)continue;const id=String(w.workspaceId).replace(/["\\]/g,'');
+          rules.push(`[data-row-key="workspace:${id}"]{display:none!important}`,`*:has(> [data-row-key="workspace:${id}"]){display:none!important}`);
+          for(const c of w.conversations??[])rules.push(`[data-row-key="session:${String(c.id).replace(/["\\]/g,'')}"]{display:none!important}`);
         }
-        hide.textContent = rules.join('\n');
+        const css=rules.join('\n');if(hide.textContent!==css)hide.textContent=css;
       }
-      function openConversation(conversation) {
-        const run = async () => {
-          if (conversation.archived) await ctx.workspaces.unarchiveSession(conversation.id);
-          await ctx.uiWorkspace.openSession(conversation.id);
-        };
-        run().catch((error) => console.warn('[dsh-ssh-remote] open conversation failed:', error));
+      function toggle(set,key){cm?.close();set.has(key)?set.delete(key):set.add(key);persist();render();}
+      function rowShell(kind,key,label,expanded,indent,toggleRow,status) {
+        const row=el('div',`dsh-sb-row dsh-sb-${kind}-row`);row.dataset.kind=kind;row.dataset.key=key;
+        row.style.setProperty('--ssh-indent',`${indent}px`);row.setAttribute('role','treeitem');row.tabIndex=0;row.setAttribute('aria-expanded',String(expanded));row.title=label;
+        const leading=el('button','dsh-sb-leading');leading.type='button';leading.title=`${expanded?'折叠':'展开'} ${label}`;leading.setAttribute('aria-label',leading.title);
+        const glyph=icon(kind==='server'?'remote-server':expanded?'folder-open-regular':'folder-close-regular');glyph.classList.add('dsh-sb-folder');
+        const arrow=icon('triangle-right-fill-regular',14);arrow.classList.add('dsh-sb-chevron');if(expanded)arrow.classList.add('open');leading.append(glyph,arrow);
+        if(status==='connected'||status==='error'){const dot=el('span',`dsh-sb-dot ${status}`);leading.append(dot);}
+        leading.addEventListener('click',e=>{e.stopPropagation();toggleRow();});row.append(leading,el('span','dsh-sb-title',label));
+        row.addEventListener('click',toggleRow);row.addEventListener('keydown',e=>{if(e.target!==row)return;
+          if(e.key==='Enter'||e.key===' '||e.key==='ArrowRight'&&!expanded||e.key==='ArrowLeft'&&expanded){e.preventDefault();toggleRow();}});
+        const actions=el('span','dsh-sb-actions');row.append(actions);return {row,actions};
       }
-      function newConversation(workspace) {
-        if (!workspace.workspaceId || workspace.orphaned) return;
-        api('open', { local_path: workspace.localDir })
-          .then((opened) => ctx.uiWorkspace.openWorkspace(opened.workspaceId))
-          .catch((error) => console.warn('[dsh-ssh-remote] new conversation failed:', error));
-      }
-      function copySessionId(id) {
-        const done = navigator.clipboard?.writeText?.(id);
-        if (done) return done.catch(() => warn('复制 Session ID 失败'));
-        const area = el('textarea'); area.value = id; document.body.append(area); area.select();
-        document.execCommand('copy'); area.remove();
-      }
-      function conversationMenu(conversation) {
-        const items = [];
-        if (!conversation.archived) items.push({ label: conversation.pinned ? '取消置顶' : '置顶会话',
-          run: () => (conversation.pinned
-            ? ctx.uiWorkspace.unpinSession(conversation.id) : ctx.uiWorkspace.pinSession(conversation.id)).then(refresh) });
-        return items.concat([
-          { label: '重命名', run: () => startEdit({ kind: 'session', id: conversation.id,
-            value: sessions()[conversation.id]?.title?.trim?.() ?? '' }) },
-          { label: '分叉会话', run: () => ctx.uiWorkspace.forkSession(conversation.id).then(refresh) },
-          { label: conversation.archived ? '取消归档' : '归档会话', danger: !conversation.archived,
-            run: () => (conversation.archived
-              ? ctx.uiWorkspace.unarchiveSession(conversation.id) : ctx.uiWorkspace.archiveSession(conversation.id)).then(refresh) },
-          { label: '复制 Session ID', run: () => copySessionId(conversation.id) },
-        ]);
-      }
-      function workspaceMenu(workspace) {
-        if (!workspace.workspaceId || workspace.orphaned) return [];
-        return [
-          { label: '新建对话', run: () => newConversation(workspace) },
-          { label: '重命名工作区', run: () => startEdit({ kind: 'workspace',
-            id: workspace.workspaceId, value: workspace.name ?? '' }) },
-        ];
-      }
-      function editRow(kindLabel, onDone) {
-        const wrap = el('div', 'dsh-sb-rename');
-        const input = el('input');
-        input.value = editing.value;
-        input.setAttribute('aria-label', kindLabel);
-        input.maxLength = 120;
-        input.addEventListener('input', () => { if (editing) editing.value = input.value; });
-        input.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') { event.preventDefault(); commitEdit(); }
-          else if (event.key === 'Escape') { event.preventDefault(); editing = null; render(); }
-        });
-        input.addEventListener('blur', () => { if (editing) commitEdit(); });
-        wrap.append(input);
-        setTimeout(() => { input.focus(); input.select(); }, 0);
-        return wrap;
-      }
+      function menuButton(row,target,label){const more=button('ellipsis-outline-regular',label,e=>openMenu(target,e.currentTarget));more.setAttribute('data-context-menu-trigger','');more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-expanded','false');
+        row.addEventListener('contextmenu',e=>{e.preventDefault();openMenu(target,more,{x:e.clientX,y:e.clientY});});return more;}
       function render() {
-        if (disposed) return;
-        frame = undefined;
-        const byId = sessions();
-        const servers = tree.servers ?? [];
-        hideRemote(servers);
-        const savedScroll = new Map();
-        for (const node of host.querySelectorAll('[data-scroll]')) savedScroll.set(node.getAttribute('data-scroll'), node.scrollTop);
-        host.replaceChildren();
-        const head = el('div', 'dsh-sb-head');
-        head.setAttribute('role', 'button');
-        head.tabIndex = 0;
-        head.append(chev(!sectionCollapsed), el('span', null, '远程工作区'));
-        const manage = el('button', 'dsh-sb-manage', '管理');
-        manage.type = 'button';
-        const openPanel = (event) => { event.stopPropagation(); ctx.layout.selectPanel(PANEL); };
-        manage.addEventListener('click', openPanel);
-        head.append(manage);
-        const toggleSection = () => { sectionCollapsed = !sectionCollapsed; render(); };
-        head.addEventListener('click', toggleSection);
-        head.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSection(); } });
+        frame=undefined;if(disposed)return;
+        if(ownsMenu(cm?.active?.getSnapshot?.())&&host.childElementCount)return;
+        const outer=host.closest('[class*=scrollArea]'),scroll=outer?.scrollTop;
+        const focused=host.contains(document.activeElement)?document.activeElement?.getAttribute('aria-label'):undefined;
+        host.replaceChildren();const head=el('div','dsh-sb-head');
+        const sectionToggle=el('button','dsh-sb-section-toggle');sectionToggle.type='button';sectionToggle.setAttribute('aria-expanded',String(!sectionCollapsed));
+        sectionToggle.setAttribute('aria-label',`${sectionCollapsed?'展开':'折叠'}远程工作区`);sectionToggle.append(icon('chevron-right-outline-regular',14),el('span','', '远程工作区'));
+        sectionToggle.addEventListener('click',()=>{cm?.close();sectionCollapsed=!sectionCollapsed;persist();render();});head.append(sectionToggle);
+        for(const [name,label]of[['settings-outline-regular','管理远程工作区'],['project-add-outline-regular','添加远程工作区']]){const b=button(name,label,()=>ctx.layout.selectPanel(PANEL));b.classList.add('dsh-sb-header-action');head.append(b);}
         host.append(head);
-        if (sectionCollapsed) return;
-        const body = el('div', 'dsh-sb-body');
-        body.setAttribute('data-scroll', 'root');
-        host.append(body);
-        if (!loaded && !servers.length) { body.append(el('div', 'dsh-sb-empty', '正在读取远程工作区…')); return; }
-        if (!servers.length) { body.append(el('div', 'dsh-sb-empty', '还没有远程工作区。点「管理」连接服务器。')); return; }
-        for (const server of servers) {
-          const section = el('div', 'dsh-sb-server');
-          const serverHead = el('button', 'dsh-sb-row'); serverHead.type = 'button';
-          const serverOpen = !collapsedServers.has(server.alias);
-          serverHead.append(chev(serverOpen), el('span', 'dsh-sb-title', server.alias));
-          const statusLabel = { connected: '可连接', saved: '待检查', disconnected: '已断开', error: '连接失败' };
-          const dot = el('span', `dsh-sb-dot ${server.status}`);
-          dot.title = statusLabel[server.status] ?? server.status;
-          dot.setAttribute('aria-label', `服务器状态：${dot.title}`);
-          serverHead.append(dot);
-          if (server.hasPassword) serverHead.title = '已保存密码';
-          serverHead.addEventListener('click', () => {
-            if (collapsedServers.has(server.alias)) collapsedServers.delete(server.alias); else collapsedServers.add(server.alias);
-            render();
-          });
-          section.append(serverHead);
-          if (!serverOpen) { body.append(section); continue; }
-          const serverBody = el('div', 'dsh-sb-body');
-          serverBody.setAttribute('data-scroll', `s:${server.alias}`);
-          section.append(serverBody);
-          for (const workspace of server.workspaces) {
-            const workspaceNode = el('div', 'dsh-sb-workspace');
-            const workspaceKey = key(server.alias, workspace.localDir);
-            const workspaceOpen = !collapsedWorkspaces.has(workspaceKey);
-            const workspaceHead = el('button', 'dsh-sb-row'); workspaceHead.type = 'button';
-            // Archived conversations live in the management page, and blank
-            // drafts are not conversations yet, so neither belongs in this list.
-            const conversations = (workspace.conversations ?? [])
-              .filter((conversation) => !conversation.archived && !byId[conversation.id]?.blank);
-            const workspaceLabel = workspace.name || workspace.title || workspace.remoteDir || '远程工作区';
-            workspaceHead.title = workspace.remoteDir ? `${workspaceLabel} · ${workspace.remoteDir}` : workspaceLabel;
-            workspaceHead.append(chev(workspaceOpen),
-              el('span', 'dsh-sb-title dsh-sb-workspace-title', workspaceLabel));
-            if (workspace.status === 'error') {
-              const dot = el('span', 'dsh-sb-dot error');
-              dot.title = workspace.message || '连接失败';
-              dot.setAttribute('aria-label', `工作区状态：${dot.title}`);
-              workspaceHead.append(dot);
-            }
-            workspaceHead.addEventListener('click', () => {
-              if (collapsedWorkspaces.has(workspaceKey)) collapsedWorkspaces.delete(workspaceKey); else collapsedWorkspaces.add(workspaceKey);
-              render();
-            });
-            const workspaceItems = workspaceMenu(workspace);
-            if (workspaceItems.length) {
-              workspaceHead.addEventListener('contextmenu', (event) => {
-                event.preventDefault();
-                openMenu(event.clientX, event.clientY, workspaceItems);
-              });
-              const more = el('button', 'dsh-sb-more dsh-sb-more-always', '⋯');
-              more.type = 'button';
-              more.title = '工作区操作';
-              more.setAttribute('aria-label', `${workspaceLabel} 的工作区操作`);
-              more.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const rect = more.getBoundingClientRect();
-                openMenu(rect.left, rect.bottom + 4, workspaceItems);
-              });
-              workspaceHead.append(more);
-              const add = el('span', 'dsh-sb-new', '＋');
-              add.setAttribute('role', 'button'); add.title = '新建对话'; add.setAttribute('aria-label', `在 ${workspaceLabel} 中新建对话`);
-              add.addEventListener('click', (event) => { event.stopPropagation(); newConversation(workspace); });
-              workspaceHead.append(add);
-            }
-            workspaceNode.append(workspaceHead);
-            if (editing?.kind === 'workspace' && editing.id === workspace.workspaceId) {
-              workspaceNode.append(editRow(`重命名工作区 ${workspaceLabel}`));
-            }
-            if (workspaceOpen) {
-              const list = el('div', 'dsh-sb-body');
-              list.setAttribute('data-scroll', `w:${server.alias}:${workspace.localDir}`);
-              workspaceNode.append(list);
-              if (!conversations.length) list.append(el('div', 'dsh-sb-empty', '还没有对话'));
-              for (const conversation of conversations) {
-                const session = byId[conversation.id];
-                const title = session?.title?.trim?.() || (session?.blank ? '新对话' : '未命名对话');
-                if (editing?.kind === 'session' && editing.id === conversation.id) {
-                  list.append(editRow(`重命名会话 ${title}`));
-                  continue;
-                }
-                const item = el('div', `dsh-sb-conv-item${conversation.archived ? ' archived' : ''}`);
-                item.setAttribute('data-session', conversation.id);
-                const row = el('button', `dsh-sb-row dsh-sb-conv${conversation.archived ? ' archived' : ''}`); row.type = 'button';
-                row.title = title;
-                if (conversation.live) row.append(el('span', 'dsh-sb-dot'));
-                row.append(el('span', 'dsh-sb-title', title));
-                row.addEventListener('click', () => openConversation(conversation));
-                row.addEventListener('contextmenu', (event) => {
-                  event.preventDefault();
-                  openMenu(event.clientX, event.clientY, conversationMenu(conversation));
-                });
-                const more = el('button', 'dsh-sb-more', '⋯');
-                more.type = 'button';
-                more.title = '会话操作';
-                more.setAttribute('aria-label', `${title} 的会话操作`);
-                more.addEventListener('click', (event) => {
-                  event.stopPropagation();
-                  const rect = more.getBoundingClientRect();
-                  openMenu(rect.left, rect.bottom + 4, conversationMenu(conversation));
-                });
-                item.append(row, more);
+        if(!sectionCollapsed){const body=el('div','dsh-sb-body');body.setAttribute('role','tree');body.setAttribute('aria-label','远程服务器与工作区');host.append(body);
+          if(!loaded)body.append(el('div','dsh-sb-empty','正在读取远程工作区…'));
+          else if(!tree.servers.length)body.append(el('div','dsh-sb-empty','还没有远程工作区，可从右上角添加。'));
+          for(const server of ordered(tree.servers,serverOrder,s=>s.alias)){
+            const expanded=!collapsedServers.has(server.alias),group=el('div','dsh-sb-server');
+            const {row,actions}=rowShell('server',server.alias,server.alias,expanded,0,()=>toggle(collapsedServers,server.alias),server.status);
+            row.title=`${server.alias}\n${server.hostname}\n${server.message||{connected:'可连接',saved:'尚未连接',disconnected:'已断开',error:'连接失败'}[server.status]}`;
+            const primary=server.workspaces.find(w=>!w.orphaned);
+            actions.append(menuButton(row,{kind:'ssh-remote-server',value:{alias:server.alias}},`服务器操作：${server.alias}`));
+            if(primary)actions.append(button('link-outline-regular',`${primary.status==='connected'?'断开连接':'连接服务器'}：${server.alias}`,()=>connectWorkspace(primary)));
+            actions.append(button('project-add-outline-regular',`添加工作区：${server.alias}`,()=>ctx.layout.selectPanel(PANEL)));
+            group.append(row);body.append(group);if(!expanded)continue;
+            const serverBody=el('div','dsh-sb-body');serverBody.setAttribute('role','group');group.append(serverBody);
+            for(const w of ordered(server.workspaces,workspaceOrder,w=>`${server.alias}:${w.localDir}`)){
+              const wk=`${server.alias}:${w.localDir}`,open=!collapsedWorkspaces.has(wk),name=w.name||w.title||w.remoteDir;
+              const workspaceNode=el('div','dsh-sb-workspace');const parts=rowShell('workspace',w.localDir,name,open,16,()=>toggle(collapsedWorkspaces,wk),w.status);
+              parts.row.dataset.workspaceId=w.workspaceId??'';parts.row.title=`${name}\n${server.alias}:${w.remoteDir}\n${w.message||w.status}`;
+              if(w.workspaceId&&!w.orphaned){parts.actions.append(menuButton(parts.row,targetOfWorkspace(w),`工作区操作：${name}`));
+                const connect=button('link-outline-regular',`${w.status==='connected'?'断开连接':'连接工作区'}：${name}`,()=>connectWorkspace(w));if(w.status==='connected')connect.classList.add('connected');
+                parts.actions.append(connect,button('new-chat-outline-regular',`新建会话：${name}`,()=>newConversation(w),14));}
+              workspaceNode.append(parts.row);serverBody.append(workspaceNode);if(!open)continue;
+              const list=el('div','dsh-sb-body');list.setAttribute('role','group');workspaceNode.append(list);
+              const byId=sessions(),current=selection();
+              for(const c of w.conversations??[]){const s=byId[c.id];if(c.archived||!s||s.origin==='subagent'||s.blank&&c.id!==current)continue;
+                const label=titleOf(s),item=el('div',`dsh-sb-row dsh-sb-session-row${c.id===current?' current':''}`);item.dataset.kind='session';item.dataset.key=c.id;item.dataset.sessionId=c.id;
+                item.style.setProperty('--ssh-indent','32px');item.tabIndex=0;item.setAttribute('role','treeitem');item.setAttribute('aria-selected',String(c.id===current));item.title=label;
+                item.append(el('span','dsh-sb-title',label),el('span','dsh-sb-time',time(s.updatedAt)));
+                item.addEventListener('click',()=>openConversation(c));item.addEventListener('keydown',e=>{if(e.target===item&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openConversation(c);}});
+                if(!s.blank){const actions=el('span','dsh-sb-actions');actions.append(menuButton(item,{kind:'session',value:{sessionId:c.id,displayTitle:label}},`会话操作：${label}`));item.append(actions);}
                 list.append(item);
               }
             }
-            serverBody.append(workspaceNode);
           }
-          body.append(section);
         }
-        restoreScroll(savedScroll);
+        if(outer&&scroll!==undefined)outer.scrollTop=scroll;
+        if(focused)[...host.querySelectorAll('[aria-label]')].find(e=>e.getAttribute('aria-label')===focused)?.focus({preventScroll:true});
       }
-      const schedule = () => { if (editing) return; if (frame === undefined) frame = requestAnimationFrame(render); };
-      async function refresh() {
-        if (disposed || busy) return;
-        busy = true;
-        try {
-          const next = await api('tree');
-          if (!disposed) { tree = next; loaded = true; render(); }
-        } catch (error) {
-          console.warn('[dsh-ssh-remote] sidebar tree refresh failed:', error);
-        } finally { busy = false; }
-      }
-      function attach() {
-        const region = document.querySelector('[class*="regionArea"]');
-        if (region && host.parentElement !== region) region.append(host);
-      }
-      const observer = new MutationObserver(() => { if (disposed) return; attach(); });
-      observer.observe(document.body, { childList: true, subtree: true });
-      const unsubscribeWorkspaces = ctx.workspaces.list.subscribe(() => { refresh(); });
-      const unsubscribeSessions = ctx.sessions?.list?.subscribe?.(() => schedule());
-      attach(); refresh();
-      return { refresh, dispose() {
-        disposed = true;
-        observer.disconnect(); unsubscribeWorkspaces?.(); unsubscribeSessions?.();
-        if (frame !== undefined) cancelAnimationFrame(frame);
-        host.remove(); style.remove(); hide.remove();
-      } };
+      function ownsMenu(active){return active?.kind==='ssh-remote-server'&&tree.servers.some(s=>s.alias===active.value.alias)
+        ||active?.kind==='workspace'&&!!findWorkspace(active.value.workspaceId)||active?.kind==='session'&&!!findSessionWorkspace(active.value.sessionId);}
+      const schedule=()=>{if(!disposed&&frame===undefined)frame=setTimeout(render,0);};
+      async function refresh(){if(disposed||loading)return;loading=true;
+        try{const next=await api('tree');if(!disposed){tree=next;loaded=true;ordered(tree.servers,serverOrder,s=>s.alias);for(const s of tree.servers)ordered(s.workspaces,workspaceOrder,w=>`${s.alias}:${w.localDir}`);persist();hideRemote(tree.servers);schedule();}}
+        catch(e){console.warn('[dsh-ssh-remote] sidebar refresh:',e);}finally{loading=false;}}
+      const updateMenu=()=>{const active=cm?.active?.getSnapshot?.(),own=ownsMenu(active);document.documentElement.classList.toggle('dsh-ssh-flat-menu',Boolean(own));
+        for(const row of host.querySelectorAll('[data-kind]')){const open=own&&(row.dataset.kind==='server'&&active.kind==='ssh-remote-server'&&row.dataset.key===active.value.alias
+          ||row.dataset.kind==='workspace'&&active.kind==='workspace'&&row.dataset.workspaceId===active.value.workspaceId
+          ||row.dataset.kind==='session'&&active.kind==='session'&&row.dataset.key===active.value.sessionId);row.classList.toggle('menu-open',Boolean(open));row.querySelector('[aria-haspopup=menu]')?.setAttribute('aria-expanded',String(Boolean(open)));}
+        if(!own)schedule();};
+      const attach=()=>{const region=document.querySelector('[class*=regionArea]');if(region&&host.parentElement!==region)region.append(host);};
+      const observer=new MutationObserver(()=>{if(!disposed)attach();});observer.observe(document.body,{childList:true,subtree:true});
+      const offWorkspaces=ctx.workspaces.list.subscribe(()=>{void refresh();}),offSessions=ctx.sessions.list.subscribe(schedule),offSelection=ctx.uiWorkspace.selection?.subscribe?.(schedule),offMenu=cm?.active?.subscribe?.(updateMenu);
+      const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},4000);
+      attach();void refresh();
+      return {refresh,dispose(){disposed=true;observer.disconnect();offWorkspaces?.();offSessions?.();offSelection?.();offMenu?.();
+        removeServerMenu?.();removeWorkspaceMenu?.();removeDeleteMenu?.();clearInterval(timer);if(frame!==undefined)clearTimeout(frame);
+        document.documentElement.classList.remove('dsh-ssh-flat-menu');dialog?.close();dialog?.remove();toast?.remove();host.remove();style.remove();hide.remove();}};
     }
     function Icon({ size = 18 } = {}) {
       return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none',

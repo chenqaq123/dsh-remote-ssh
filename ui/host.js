@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { browseRemote } from '../lib/browse.js';
 import { buildWorkspaceTree } from '../lib/workspace-tree.js';
+import { normalizeLocal } from '../lib/mounts.js';
 
 export async function registerSshUi(ctx, host, runtime) {
   const [{ z }, { TypertRemoteService }] = await Promise.all([
@@ -28,6 +29,25 @@ export async function registerSshUi(ctx, host, runtime) {
     remove(request) {
       if (!runtime.removeWorkspace) throw new Error('工作区服务尚未就绪，请稍后重试。');
       return runtime.removeWorkspace(request.local_path, { retain: false });
+    }
+    /** Remove an already archived conversation from the remote sidebar only. */
+    forgetSession(request) {
+      const localDir = normalizeLocal(request.local_path);
+      const registry = runtime.ctx.get?.('workspaceRegistry');
+      const workspace = registry?.list().find((entry) => normalizeLocal(entry.path) === localDir);
+      if (!workspace?.sessionIds.includes(request.session_id)) throw new Error('会话不属于这个远程工作区。');
+      if (!registry.archivedSessionIds.includes(request.session_id)) throw new Error('请先归档会话，再从远程列表移除。');
+      const updates = [];
+      for (const map of [runtime.mounts.mounts, runtime.mounts.disconnectedMounts, runtime.mounts.configuredMounts]) {
+        const previous = map.get(localDir);
+        if (previous !== undefined) updates.push({ map, previous });
+      }
+      if (updates.length === 0) throw new Error('找不到这个远程工作区的映射记录。');
+      for (const { map, previous } of updates) map.set(localDir, { ...previous,
+        removedSessionIds: [...new Set([...(previous.removedSessionIds ?? []), request.session_id])] });
+      try { runtime.mounts.save(); }
+      catch (error) { for (const { map, previous } of updates) map.set(localDir, previous); throw error; }
+      return { removed: true, sessionId: request.session_id };
     }
     tree() { return buildWorkspaceTree(runtime); }
   }
@@ -68,6 +88,8 @@ export async function registerSshUi(ctx, host, runtime) {
       result: z.object({ removed: z.boolean() }) },
     disconnect: { request: pathRequest, result: z.object({ alias: z.string(), remoteDir: z.string(), localDir: z.string(), closed: z.boolean() }) },
     remove: { request: pathRequest, result: z.object({ removed: z.literal(true), localDir: z.string(), archivedSessionIds: z.array(z.string()) }) },
+    forgetSession: { request: pathRequest.extend({ session_id: z.string().min(1).max(256) }).strict(),
+      result: z.object({ removed: z.literal(true), sessionId: z.string() }) },
     tree: { result: z.object({ servers: z.array(serverNode) }) },
   };
   const codec = (method, kind, schema) => ({ mode: 'strict',
