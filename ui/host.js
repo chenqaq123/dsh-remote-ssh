@@ -93,10 +93,10 @@ export async function registerSshUi(ctx, host, runtime) {
     tree: { result: z.object({ servers: z.array(serverNode) }) },
   };
   const codec = (method, kind, schema) => ({ mode: 'strict',
-    typeSymbol: `dsh-ssh-remote-ui#${method}:${kind}`, create: () => schema });
-  ctx.typert.register({ package: 'dsh-ssh-remote-ui', face: 'host', schemas: [],
+    typeSymbol: `dsh-ssh-remote-workspace-ui#${method}:${kind}`, create: () => schema });
+  ctx.typert.register({ package: 'dsh-ssh-remote-workspace-ui', face: 'host', schemas: [],
     invocations: Object.entries(definitions).map(([method, def]) => ({
-      id: `dsh-ssh-remote-ui#sshRemoteUi/${method}`, service: 'sshRemoteUi', namespace: 'sshRemoteUi', method,
+      id: `dsh-ssh-remote-workspace-ui#sshRemoteUi/${method}`, service: 'sshRemoteUi', namespace: 'sshRemoteUi', method,
       invocation: { kind: 'direct' }, parameters: def.request
         ? [{ name: 'request', wire: 'request', source: 'json', codec: codec(method, 'request', def.request) }] : [],
       ...(def.cancel ? { cancellation: { parameter: 'signal' } } : {}),

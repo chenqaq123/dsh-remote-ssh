@@ -1,5 +1,5 @@
 /**
- * dsh-ssh-remote — run a DSH session against a remote server over SSH.
+ * dsh-ssh-remote-workspace — run a DSH session against a remote server over SSH.
  *
  * The plugin follows the harness's capability-seam pattern rather than adding
  * remote-specific tools: it mounts an SSH-backed `ctx.fs` and `ctx.shell`, so the
@@ -18,7 +18,7 @@
  * password is typed once and connection multiplexing covers every later
  * operation.
  *
- * @module dsh-ssh-remote
+ * @module dsh-ssh-remote-workspace
  */
 
 import { join } from 'node:path';
@@ -59,7 +59,10 @@ function defaults() {
     watchIntervalMs: 3_000,
     batchMode: true,
     strictHostKeyChecking: 'accept-new',
-    multiplex: true,
+    // Windows OpenSSH implements no ControlMaster sockets ("getsockname
+    // failed: Not a socket"), so every operation there opens its own
+    // connection unless the user opts back in with an MSYS-style ssh.
+    multiplex: process.platform !== 'win32',
     localFallback: true,
     extraSshArgs: [],
     confineMutations: true,
@@ -138,7 +141,6 @@ export function resolveConfig(raw) {
  * @param rawConfig - deployment configuration.
  */
 export function apply(ctx, rawConfig) {
-  if (process.platform === 'win32') throw new Error('ssh-remote currently supports macOS and Linux; Windows/Pwsh routing is not implemented');
   const config = resolveConfig(rawConfig);
   const configPaths = config.sshConfigPaths ?? defaultConfigPaths();
   const blocks = parseSshConfig(configPaths).blocks;

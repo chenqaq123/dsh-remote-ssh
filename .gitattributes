@@ -1,0 +1,5 @@
+# Normalize every text file to LF: the `bin` script must keep a clean shebang
+# (pnpm refuses CRLF bin files) and `lib/remote.sh` is executed by the remote
+# POSIX shell verbatim, where CR bytes would corrupt every command.
+* text=auto eol=lf
+*.png binary

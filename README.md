@@ -28,7 +28,12 @@
 
 ## 环境要求
 
-本地支持 macOS 和 Linux，需要系统 OpenSSH。远端需要 POSIX `sh`、GNU/BSD `stat`、`readlink`、`mktemp` 等常见命令；执行远程终端命令还需要 `bash`。目前不支持 Windows/Pwsh。
+本地支持 macOS、Linux 和 Windows。
+
+- **macOS / Linux**：需要系统 OpenSSH。
+- **Windows**：需要 OpenSSH 客户端（Windows 10/11 内置的「OpenSSH 客户端」可选功能即可，或 Git for Windows 自带的 `ssh`）与 PowerShell（系统自带，仅密码认证的 askpass 助手使用）。Windows 版 OpenSSH 不支持 ControlMaster 连接复用，插件在 Windows 上默认禁用多路复用（每次操作独立建连；可用配置项 `multiplex: true` 配合支持复用的 `ssh` 重新开启）。
+
+远端需要 POSIX `sh`、GNU/BSD `stat`、`readlink`、`mktemp` 等常见命令；执行远程终端命令还需要 `bash`。
 
 先在终端确认可以登录服务器（需要密码的服务器也可以，见下文「密码认证」）。示例 `~/.ssh/config`：
 
@@ -50,8 +55,8 @@ ssh dev-server
 需要密码的服务器可以直接连接：在面板的「密码」里填一次，密码保存在本机，之后自动登录，不必每次输入。选择远程目录时也会带上这个密码；如果还没填，目录选择器里会内联提示输入一次，保存后重试即可。
 
 - 密码保存在 `~/.dsh/ssh-remote/secrets.json`（0600，仅当前用户可读写），可用配置项 `secretsFile` 改路径；在面板中点「清除密码」即可删除。
-- 认证走 OpenSSH 自己的 `SSH_ASKPASS` 机制：密码不会出现在命令行参数里，`ssh` 仍然自己完成认证。密码只在建立连接时用到，之后所有操作复用同一条多路复用连接，连接过期后也会用保存的密码自动重建。
-- 需要 OpenSSH ≥ 8.4（依赖 `SSH_ASKPASS_REQUIRE=force`，否则从终端启动 Harness 时 `ssh` 会去读 `/dev/tty`）。
+- 认证走 OpenSSH 自己的 `SSH_ASKPASS` 机制：密码不会出现在命令行参数里，`ssh` 仍然自己完成认证。密码只在建立连接时用到，之后所有操作复用同一条多路复用连接（Windows 上无复用，见上文），连接过期后也会用保存的密码自动重建。
+- 需要 OpenSSH ≥ 8.4（依赖 `SSH_ASKPASS_REQUIRE=force`，否则从终端启动 Harness 时 `ssh` 会去读 `/dev/tty`）。Windows 10/11 内置的 OpenSSH（8.6+/9.5）满足要求；askpass 助手是一个临时 `.cmd` 批处理，经 PowerShell 原样回显保存的密码。
 - 只有当服务器提供 `password` 或 `keyboard-interactive` 认证时才会要求密码；纯密钥服务器仍按原来的方式处理。
 - 不支持需要多轮交互的二次验证（例如两次 keyboard-interactive 提示），因为 askpass 每次只回答同一个密码。
 - 密码文件是本机凭据：不要提交到仓库或分享给他人，同机同用户下的其他进程理论上可以读取它。
@@ -85,7 +90,14 @@ macOS 如果找不到 `dsh` 命令，可以使用应用内自带的 CLI：
   plugin --profile desktop add github:chenqaq123/dsh-remote-ssh
 ```
 
-安装完成后重新打开 Harness，在「插件 → 已安装」中管理 `dsh-ssh-remote`。停用插件并重启后，本地文件系统和终端后端会恢复。
+安装完成后重新打开 Harness，在「插件 → 已安装」中管理 `dsh-ssh-remote-workspace`。停用插件并重启后，本地文件系统和终端后端会恢复。
+
+Windows 上如果找不到 `dsh` 命令，同样可以使用应用内自带的 CLI：
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" `
+  plugin --profile desktop add github:chenqaq123/dsh-remote-ssh
+```
 
 ### 从源码安装
 
@@ -98,7 +110,7 @@ npm install --omit=dev --ignore-scripts
 node scripts/profile.mjs install desktop
 ```
 
-默认安装会先执行 `npm pack`，把 tarball 写入 `~/.dsh/plugin-packages/`，再让 DSH 通过 `file:` 依赖安装。因此安装完成后可以移动或删除源码目录。需要实时调试源码时才使用链接模式：
+默认安装会先执行 `npm pack`，把 tarball 写入 `~/.dsh/plugin-packages/`，再让 DSH 通过 `file:` 依赖安装。因此安装完成后可以移动或删除源码目录。机器上没有独立 npm 时，安装器会自动改用 Harness 桌面应用自带的 pnpm 打包；Windows 上的 `npm`/`dsh.cmd` 调用已全部适配。需要实时调试源码时才使用链接模式：
 
 ```sh
 node scripts/profile.mjs install desktop --link
@@ -106,7 +118,9 @@ node scripts/profile.mjs install desktop --link
 
 链接模式会把当前 checkout 注册为 `link:` 依赖，调试期间必须保留源码目录。
 
-macOS 安装器优先使用桌面应用自带的 CLI；其他环境会从 PATH 查找 `dsh`。可用 `DSH_CLI=/绝对路径/dsh` 指定命令，`DSH_HOME` 指定 DSH 配置根目录。
+macOS 与 Windows 安装器优先使用桌面应用自带的 CLI；其他环境会从 PATH 查找 `dsh`。可用 `DSH_CLI=/绝对路径/dsh`（Windows 指向 `dsh.cmd`）指定命令，`DSH_HOME` 指定 DSH 配置根目录。
+
+> 包名说明：本插件曾以 `dsh-ssh-remote` 名称开发，因该 npm 名已被占用，自 0.7.0 起更名为 `dsh-ssh-remote-workspace`。安装器会自动识别并移除旧名称的源码安装，配置、密码与工作区数据不受影响。
 
 ### 迁移旧安装
 
@@ -128,7 +142,7 @@ node scripts/profile.mjs install desktop
 通过 DSH 卸载：
 
 ```sh
-dsh plugin --profile desktop remove dsh-ssh-remote
+dsh plugin --profile desktop remove dsh-ssh-remote-workspace
 ```
 
 源码安装也可以运行：

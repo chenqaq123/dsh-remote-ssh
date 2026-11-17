@@ -1,6 +1,6 @@
 /* Native Harness client bundle. React and services come from its module loader. */
 window.__ModuleLoader__.load({
-  id: 'dsh-ssh-remote',
+  id: 'dsh-ssh-remote-workspace',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -104,7 +104,7 @@ window.__ModuleLoader__.load({
       const style = document.createElement('style'); style.textContent = SIDEBAR_CSS;
       const hide = document.createElement('style'); document.head.append(style, hide);
       const host = document.createElement('div'); host.className = 'dsh-sb'; host.setAttribute('aria-label', '远程工作区');
-      const STATE_KEY = 'dsh-ssh-remote:sidebar-v2';
+      const STATE_KEY = 'dsh-ssh-remote-workspace:sidebar-v2';
       let saved = {};
       try { saved = JSON.parse(localStorage.getItem(STATE_KEY) ?? '{}') ?? {}; } catch { /* optional storage */ }
       let sectionCollapsed = saved.collapsed !== false;
@@ -284,7 +284,7 @@ window.__ModuleLoader__.load({
       const schedule=()=>{if(!disposed&&frame===undefined)frame=setTimeout(render,0);};
       async function refresh(){if(disposed||loading)return;loading=true;
         try{const next=await api('tree');if(!disposed){tree=next;loaded=true;ordered(tree.servers,serverOrder,s=>s.alias);for(const s of tree.servers)ordered(s.workspaces,workspaceOrder,w=>`${s.alias}:${w.localDir}`);persist();hideRemote(tree.servers);schedule();}}
-        catch(e){console.warn('[dsh-ssh-remote] sidebar refresh:',e);}finally{loading=false;}}
+        catch(e){console.warn('[dsh-ssh-remote-workspace] sidebar refresh:',e);}finally{loading=false;}}
       const updateMenu=()=>{const active=cm?.active?.getSnapshot?.(),own=ownsMenu(active);document.documentElement.classList.toggle('dsh-ssh-flat-menu',Boolean(own));
         for(const row of host.querySelectorAll('[data-kind]')){const open=own&&(row.dataset.kind==='server'&&active.kind==='ssh-remote-server'&&row.dataset.key===active.value.alias
           ||row.dataset.kind==='workspace'&&active.kind==='workspace'&&row.dataset.workspaceId===active.value.workspaceId
@@ -487,7 +487,7 @@ window.__ModuleLoader__.load({
           h(Chevron, { open: expanded }),
           h('div', { className: 'dsh-ssh-host' }, h(Icon), h('span', { className: 'dsh-ssh-server-name' }, server.alias)),
           server.hostname !== server.alias && h('span', { className: 'dsh-ssh-hostname-text' }, server.hostname),
-          server.hasPassword && h('span', { className: 'dsh-ssh-remote-dot', title: '已保存密码', 'aria-label': '已保存密码' }),
+          server.hasPassword && h('span', { className: 'dsh-ssh-remote-workspace-dot', title: '已保存密码', 'aria-label': '已保存密码' }),
           h('span', { style: { flex: 1 } }),
           h('span', { className: `dsh-ssh-status ${server.status}` }, statuses[server.status]),
           checkable.length > 0 && h('button', { disabled, 'aria-label': `检查 ${server.alias} 的全部工作区`,
@@ -539,7 +539,7 @@ window.__ModuleLoader__.load({
           api('list', undefined, signal),
           // A tree hiccup keeps the last good hierarchy instead of blanking the panel.
           api('tree', undefined, signal).catch((error) => {
-            if (!signal?.aborted) console.warn('[dsh-ssh-remote] tree refresh failed:', error);
+            if (!signal?.aborted) console.warn('[dsh-ssh-remote-workspace] tree refresh failed:', error);
             return null;
           }),
         ]);

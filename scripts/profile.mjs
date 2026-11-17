@@ -18,8 +18,12 @@ import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { parseDocument, stringify } from 'yaml';
 
+const WINDOWS = process.platform === 'win32';
+
 const source = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const packageName = 'dsh-ssh-remote';
+const packageName = 'dsh-ssh-remote-workspace';
+// npm names this plugin shipped under before the rename.
+const legacyPackageNames = ['dsh-ssh-remote'];
 const legacyBegin = /^# >>> dsh-ssh-remote(?: \([^\n]*\))? >>>[^\n]*$/gm;
 // Early install.sh releases indented the closing comment inside config.
 const legacyEnd = /^[\t ]*# <<< dsh-ssh-remote <<<[^\n]*(?:\n|$)/gm;
@@ -64,7 +68,7 @@ function migratePatch(original) {
     } else if (Array.isArray(row?.insert) && Object.keys(row).length === 1 && row.insert.length === 1
       && row.insert[0]?.id === 'ssh-remote' && !ssh) {
       ssh = row.insert[0];
-      if (!['dsh-ssh-remote', './plugins/dsh-ssh-remote/index.js'].includes(ssh.name)
+      if (!['dsh-ssh-remote', 'dsh-ssh-remote-workspace', './plugins/dsh-ssh-remote/index.js'].includes(ssh.name)
         || Object.keys(ssh).some(key => !['id', 'name', 'config', 'disabled'].includes(key))) {
         throw new Error('Unexpected legacy SSH loader settings; no changes made.');
       }
@@ -83,15 +87,75 @@ function migratePatch(original) {
 
 /** Prefer the Desktop carrier: the ordinary CLI cannot manage the reserved desktop profile. */
 function findDshCli(env = process.env, platform = process.platform) {
-  const desktop = '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
+  const names = platform === 'win32' ? ['dsh.cmd', 'dsh.exe', 'dsh'] : ['dsh'];
+  const desktop = platform === 'win32'
+    ? join(env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'DeepSeek Harness', 'resources', 'runtime', 'cli', 'bin', 'dsh.cmd')
+    : '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
   const candidates = env.DSH_CLI ? [env.DSH_CLI] : [
-    ...(platform === 'darwin' ? [desktop] : []),
-    ...(env.PATH ?? '').split(delimiter).map(dir => join(dir, 'dsh')),
+    ...(existsSync(desktop) ? [desktop] : []),
+    ...(env.PATH ?? '').split(delimiter).filter(Boolean).flatMap(dir => names.map(name => join(dir, name))),
   ];
   const cli = candidates.find(path => existsSync(path) && lstatSync(path).isFile()
     || existsSync(path) && lstatSync(path).isSymbolicLink());
   if (!cli) throw new Error('DSH CLI not found. Install DSH or set DSH_CLI to its executable path.');
   return cli;
+}
+
+/** Quote one argument for a `cmd.exe /c` command line. */
+function quoteForCmd(value) {
+  return /^[\w./:\\-]+$/u.test(value) ? value : `"${value.replaceAll('"', '')}"`;
+}
+
+/**
+ * Run one helper process. Windows cannot spawn `.cmd`/`.bat` images directly
+ * (Node raises EINVAL since the argv-injection fix), so every command goes
+ * through `cmd.exe`, which also resolves bare names such as `npm` from the
+ * PATH. The whole line is wrapped in one extra quote pair, exactly the way
+ * Node's own `shell: true` builds it, so internal quoting survives `cmd /s`.
+ */
+function runProcess(command, args, options = {}) {
+  if (!WINDOWS) return spawnSync(command, args, options);
+  const line = [command, ...args].map(quoteForCmd).join(' ');
+  return spawnSync('cmd.exe', ['/d', '/s', '/c', `"${line}"`], { ...options, windowsVerbatimArguments: true });
+}
+
+/** Candidate launchers able to produce the installable tarball. */
+function packRunners() {
+  const runners = [];
+  if (process.env.NPM_CLI) runners.push({ command: process.env.NPM_CLI });
+  // A Node installed from the official distribution always carries npm beside itself.
+  const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (existsSync(npmCli)) runners.push({ command: process.execPath, args: [npmCli] });
+  runners.push({ command: 'npm' });
+  // The Desktop carrier ships pnpm; run it with its own bundled Node.
+  const harnessDir = WINDOWS
+    ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'DeepSeek Harness')
+    : undefined;
+  if (harnessDir !== undefined) {
+    const runtimeNode = join(harnessDir, 'resources', 'runtime', 'primary-runtime', 'dependencies', 'node', 'bin', 'node.exe');
+    const pnpmCli = join(harnessDir, 'resources', 'runtime', 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.cjs');
+    if (existsSync(runtimeNode) && existsSync(pnpmCli)) runners.push({ command: runtimeNode, args: [pnpmCli] });
+  }
+  return runners;
+}
+
+/** Build a tarball DSH can install without retaining this checkout. */
+function packPlugin(base, pluginDir) {
+  const destination = join(base, 'plugin-packages');
+  mkdirSync(destination, { recursive: true, mode: 0o755 });
+  const metadata = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'));
+  const tarball = join(destination, `${metadata.name}-${metadata.version}.tgz`);
+  rmSync(tarball, { force: true });
+  const failures = [];
+  for (const runner of packRunners()) {
+    const result = runProcess(runner.command, [...runner.args ?? [], 'pack', pluginDir, '--pack-destination', destination], {
+      env: process.env,
+      encoding: 'utf8',
+    });
+    if (!result.error && result.status === 0 && existsSync(tarball)) return tarball;
+    failures.push(`${runner.command}${result.error ? `: ${result.error.message}` : ` (exit ${result.status})`}`);
+  }
+  throw new Error(`npm pack failed; tried: ${failures.join('; ')}`);
 }
 
 function atomicWrite(path, text) {
@@ -108,7 +172,7 @@ function linkTarget(path) {
 }
 
 /** Whether a recorded dependency was installed from this checkout or our tarball. */
-function isOwnPackageSpec(base, spec, pluginDir = source) {
+function isOwnPackageSpec(base, spec, pluginDir = source, packageNames = [packageName, ...legacyPackageNames]) {
   if (typeof spec !== 'string') return false;
   if (spec.startsWith('link:')) {
     try { return resolve(spec.slice('link:'.length)) === pluginDir; }
@@ -119,40 +183,28 @@ function isOwnPackageSpec(base, spec, pluginDir = source) {
       const tarball = resolve(spec.slice('file:'.length));
       const name = basename(tarball);
       return dirname(tarball) === join(base, 'plugin-packages')
-        && name.startsWith(`${packageName}-`) && name.endsWith('.tgz');
+        && packageNames.some((packageName) => name.startsWith(`${packageName}-`)) && name.endsWith('.tgz');
     } catch { return false; }
   }
   return false;
 }
 
-/** Build a tarball DSH can install without retaining this checkout. */
-function packPlugin(base, pluginDir) {
-  const destination = join(base, 'plugin-packages');
-  mkdirSync(destination, { recursive: true, mode: 0o755 });
-  const npm = process.env.NPM_CLI ?? 'npm';
-  const result = spawnSync(npm, ['pack', pluginDir, '--pack-destination', destination, '--json'], {
-    env: process.env,
-    encoding: 'utf8',
-  });
-  if (result.error || result.status !== 0) {
-    throw new Error(`npm pack failed${result.error ? `: ${result.error.message}` : ` (exit ${result.status})`}`);
+/**
+ * Refuse profile mutations while the app is running. POSIX lets pnpm replace
+ * files a live process holds open; Windows does not, and a partially written
+ * `node_modules` breaks the whole profile at the next boot.
+ */
+function assertAppClosed() {
+  if (!WINDOWS) return;
+  const result = spawnSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeek Harness.exe', '/FO', 'CSV', '/NH'], { encoding: 'utf8' });
+  if ((result.stdout ?? '').includes('DeepSeek Harness.exe')) {
+    throw new Error('DeepSeek Harness 正在运行。请完全退出应用（包括系统托盘图标）后，再安装或卸载插件。');
   }
-  let output;
-  try { output = JSON.parse(result.stdout); } catch { throw new Error('npm pack returned unreadable JSON'); }
-  const filename = output?.[0]?.filename;
-  if (typeof filename !== 'string' || filename.includes('/') || filename.includes('\\')
-    || !filename.startsWith(`${packageName}-`) || !filename.endsWith('.tgz')) {
-    throw new Error(`npm pack returned an unexpected filename: ${String(filename)}`);
-  }
-  const tarball = join(destination, basename(filename));
-  if (!existsSync(tarball)) throw new Error(`npm pack did not create ${tarball}`);
-  return tarball;
 }
 
 /** Native pnpm operations own dependency/selection bookkeeping; data files are never edited. */
 export function updateProfile(action, profile = 'desktop', base = process.env.DSH_HOME ?? join(homedir(), '.dsh'), pluginDir = source, options = {}) {
-  if (!['install', 'uninstall'].includes(action)) throw new Error('Usage: dsh-ssh-remote <install|uninstall> [profile] [--link]');
-  if (action === 'install' && process.platform === 'win32') throw new Error('This plugin currently supports macOS and Linux; Windows/Pwsh is not supported.');
+  if (!['install', 'uninstall'].includes(action)) throw new Error('Usage: dsh-ssh-remote-workspace <install|uninstall> [profile] [--link]');
   if (!/^[\w.-]+$/u.test(profile) || ['.', '..', 'node_modules'].includes(profile)) throw new Error('Invalid profile name');
   const linkInstall = options.link === true;
   base = resolve(base); pluginDir = realpathSync(pluginDir);
@@ -168,15 +220,16 @@ export function updateProfile(action, profile = 'desktop', base = process.env.DS
   if (!installed) linkTarget(nativeLink);
   if (action === 'install') {
     const metadata = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'));
-    if (metadata.name !== packageName || !metadata.dsh?.bundle?.patch) throw new Error('Not a dsh-ssh-remote bundle');
+    if (metadata.name !== packageName || !metadata.dsh?.bundle?.patch) throw new Error(`Not a ${packageName} bundle`);
     const recorded = manifest.dependencies?.[packageName];
     if (installed && !isOwnPackageSpec(base, recorded, pluginDir)) {
       throw new Error('Plugin is installed from another location. Remove it through DSH before changing its source.');
     }
   }
   const needsNative = action === 'install' || installed || manifest.dsh?.profile?.bundles?.includes(packageName);
+  if (needsNative) assertAppClosed();
   const cli = needsNative ? (options.cli ?? findDshCli()) : undefined;
-  const run = options.runNative ?? spawnSync;
+  const run = options.runNative ?? runProcess;
   let spec;
   if (action === 'install') spec = linkInstall ? `link:${pluginDir}` : `file:${packPlugin(base, pluginDir)}`;
   const files = ['package.json', 'cordis.patch.yml', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
@@ -187,6 +240,18 @@ export function updateProfile(action, profile = 'desktop', base = process.env.DS
   // Retain the obsolete link until every native operation and patch write succeeds.
   const previousNativeLink = existsSync(nativeLink) && lstatSync(nativeLink).isSymbolicLink() ? readlinkSync(nativeLink) : undefined;
   try {
+    if (needsNative && action === 'install') {
+      // The plugin shipped as `dsh-ssh-remote` before the rename. Retire an
+      // old-name install from this checkout so the profile never mounts both.
+      for (const legacyName of legacyPackageNames) {
+        const recorded = JSON.parse(readFileSync(manifestPath, 'utf8')).dependencies?.[legacyName];
+        if (!isOwnPackageSpec(base, recorded, pluginDir, [legacyName])) continue;
+        const removed = run(cli, ['plugin', '--profile', profile, 'remove', legacyName], { env: { ...process.env, DSH_HOME: base }, stdio: 'inherit' });
+        if (removed.error || removed.status !== 0) {
+          throw new Error(`DSH native remove failed for ${legacyName}${removed.error ? `: ${removed.error.message}` : ` (exit ${removed.status})`}`);
+        }
+      }
+    }
     if (needsNative) {
       const args = ['plugin', '--profile', profile, ...(action === 'install' ? ['add', spec] : ['remove', packageName])];
       const result = run(cli, args, { env: { ...process.env, DSH_HOME: base }, stdio: 'inherit' });
@@ -220,8 +285,14 @@ export function updateProfile(action, profile = 'desktop', base = process.env.DS
     }
     if (!installed && existsSync(nativeLink) && lstatSync(nativeLink).isSymbolicLink()) rmSync(nativeLink);
     if (previousNativeLink !== undefined && !existsSync(nativeLink)) {
-      mkdirSync(dirname(nativeLink), { recursive: true });
-      symlinkSync(previousNativeLink, nativeLink, 'dir');
+      try {
+        mkdirSync(dirname(nativeLink), { recursive: true });
+        symlinkSync(previousNativeLink, nativeLink, 'dir');
+      } catch (restoreError) {
+        // Windows only creates directory symlinks with developer mode or
+        // privilege; a failed cosmetic restore must not mask the real error.
+        error.attemptedLinkRestore = restoreError.message;
+      }
     }
     throw new Error(`${error.message}. Profile files restored; backup: ${backup}`, { cause: error });
   }
@@ -238,7 +309,7 @@ if (process.argv[1] && existsSync(process.argv[1]) && realpathSync(process.argv[
     const profile = args.slice(1).find(argument => !argument.startsWith('-'))
       ?? process.env.DSH_PROFILE ?? 'desktop';
     const result = updateProfile(action, profile, undefined, undefined, { link: flags.includes('--link') });
-    console.log(`${result.action === 'install' ? 'Installed through DSH' : 'Uninstalled'} dsh-ssh-remote: ${result.profile}`);
+    console.log(`${result.action === 'install' ? 'Installed through DSH' : 'Uninstalled'} ${packageName}: ${result.profile}`);
     if (result.migrated) console.log('Migrated legacy loader; custom SSH configuration preserved.');
     if (result.action === 'install') {
       console.log(result.spec.startsWith('link:')

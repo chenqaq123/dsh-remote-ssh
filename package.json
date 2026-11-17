@@ -1,6 +1,6 @@
 {
-  "name": "dsh-ssh-remote",
-  "version": "0.6.4",
+  "name": "dsh-ssh-remote-workspace",
+  "version": "0.7.0",
   "description": "SSH remote workspaces and a graphical directory picker for DeepSeek Harness Desktop.",
   "type": "module",
   "main": "index.js",
@@ -39,7 +39,8 @@
   },
   "os": [
     "darwin",
-    "linux"
+    "linux",
+    "win32"
   ],
   "license": "MIT",
   "repository": {
@@ -57,7 +58,7 @@
     "remote-workspace"
   ],
   "bin": {
-    "dsh-ssh-remote": "scripts/profile.mjs"
+    "dsh-ssh-remote-workspace": "scripts/profile.mjs"
   },
   "dependencies": {
     "yaml": "^2.9.1"
