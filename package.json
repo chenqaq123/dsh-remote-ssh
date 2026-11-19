@@ -1,6 +1,6 @@
 {
   "name": "dsh-ssh-remote-workspace",
-  "version": "0.7.0",
+  "version": "0.7.3",
   "description": "SSH remote workspaces and a graphical directory picker for DeepSeek Harness Desktop.",
   "type": "module",
   "main": "index.js",
@@ -28,6 +28,7 @@
     "client": {
       "platform": "web",
       "inject": [
+        "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-workspace"
@@ -59,6 +60,9 @@
   ],
   "bin": {
     "dsh-ssh-remote-workspace": "scripts/profile.mjs"
+  },
+  "scripts": {
+    "test": "node test/run.mjs"
   },
   "dependencies": {
     "yaml": "^2.9.1"
